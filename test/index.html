@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>mendooR</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span class="time" id="clock">9:41</span>
+    <div class="status-icons">
+      <svg width="15" height="11" viewBox="0 0 16 12" fill="none">
+        <rect x="0" y="4" width="2.5" height="8" rx="1" fill="white" opacity="0.5"/>
+        <rect x="4" y="2.5" width="2.5" height="9.5" rx="1" fill="white" opacity="0.7"/>
+        <rect x="8" y="0.5" width="2.5" height="11.5" rx="1" fill="white"/>
+        <rect x="12" y="0" width="3.5" height="12" rx="1" fill="white" opacity="0.25"/>
+      </svg>
+      <svg width="18" height="11" viewBox="0 0 20 12" fill="none">
+        <rect x="0.5" y="0.5" width="16" height="11" rx="2.5" stroke="white" stroke-opacity="0.35"/>
+        <rect x="2" y="2" width="10" height="8" rx="1.5" fill="white"/>
+        <path d="M17.5 4v4a2 2 0 000-4z" fill="white" opacity="0.35"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN 1: HOME ══════════ -->
+  <div id="s-home" class="screen active">
+
+    <div class="home-scroll">
+
+    <div class="home-header">
+      <h1>mendooR</h1>
+      <p>Aus alt mach neu – keine Wissenschaft</p>
+    </div>
+
+    <div class="sec-row">
+      <span class="label">Kategorie</span>
+      <button class="link" onclick="showToast('Alle Kategorien – coming soon')">Alle Anzeigen</button>
+    </div>
+
+    <div class="cats-scroll">
+      <div class="cat-chip active" onclick="selectCat(this)">
+        <div class="cat-chip-icon" style="background:#3a1a3a;">❄️</div>
+        <span>Kühlsysteme</span>
+      </div>
+      <div class="cat-chip" onclick="selectCat(this)">
+        <div class="cat-chip-icon" style="background:#162840;">🖥️</div>
+        <span>Bildschirme</span>
+      </div>
+      <div class="cat-chip" onclick="selectCat(this)">
+        <div class="cat-chip-icon" style="background:#1a2e1a;">💡</div>
+        <span>Lampen</span>
+      </div>
+      <div class="cat-chip" onclick="selectCat(this)">
+        <div class="cat-chip-icon" style="background:#3a2210;">🔌</div>
+        <span>Großgeräte</span>
+      </div>
+      <div class="cat-chip" onclick="selectCat(this)">
+        <div class="cat-chip-icon" style="background:#2e1a1a;">🔧</div>
+        <span>Kleingeräte</span>
+      </div>
+      <div class="cat-chip" onclick="selectCat(this)">
+        <div class="cat-chip-icon" style="background:#141440;">📱</div>
+        <span>IT & Telekom</span>
+      </div>
+    </div>
+
+    <div class="scanner-wrap">
+      <div class="scanner-box" onclick="openScanner()">
+        <div class="scan-icon-wrap">
+          <svg viewBox="0 0 64 64" fill="none" style="width:100%;height:100%;">
+            <rect x="8" y="8" width="18" height="3.5" rx="1.75" fill="#4CAF50"/>
+            <rect x="8" y="8" width="3.5" height="18" rx="1.75" fill="#4CAF50"/>
+            <rect x="38" y="8" width="18" height="3.5" rx="1.75" fill="#4CAF50"/>
+            <rect x="52.5" y="8" width="3.5" height="18" rx="1.75" fill="#4CAF50"/>
+            <rect x="8" y="52.5" width="18" height="3.5" rx="1.75" fill="#4CAF50"/>
+            <rect x="8" y="38" width="3.5" height="18" rx="1.75" fill="#4CAF50"/>
+            <rect x="38" y="52.5" width="18" height="3.5" rx="1.75" fill="#4CAF50"/>
+            <rect x="52.5" y="38" width="3.5" height="18" rx="1.75" fill="#4CAF50"/>
+            <circle cx="32" cy="32" r="9" stroke="#4CAF50" stroke-width="2.5" fill="none"/>
+            <circle cx="32" cy="32" r="3.5" fill="#4CAF50"/>
+          </svg>
+        </div>
+        <h3>Gerät Scannen</h3>
+        <p>Kamera auf das Gerät halten und auslösen</p>
+      </div>
+    </div>
+
+      <div class="sec-block">
+        <h2>Zuletzt gescannt</h2>
+        <div class="empty-box" id="recent-box">Noch keine gescannten Geräte.<br>Scanne dein erstes Gerät oben.</div>
+      </div>
+      <div class="sec-block" style="margin-top: var(--gap);">
+        <h2>Inspiration</h2>
+        <div class="insp-row">
+          <div class="insp-card" onclick="goTo('s-result')">
+            <div class="insp-card-img" style="background:#12122a;">📱</div>
+            <div class="insp-card-body">
+              <h4>Altes Handy als Dashcam</h4>
+              <p>DIY-Guide · 3 Schritte</p>
+            </div>
+          </div>
+          <div class="insp-card" onclick="showToast('Guide folgt bald')">
+            <div class="insp-card-img" style="background:#0f1f0f;">💻</div>
+            <div class="insp-card-body">
+              <h4>Laptop als Homeserver</h4>
+              <p>DIY-Guide · 5 Schritte</p>
+            </div>
+          </div>
+          <div class="insp-card" onclick="showToast('Guide folgt bald')">
+            <div class="insp-card-img" style="background:#201010;">📷</div>
+            <div class="insp-card-body">
+              <h4>Kamera ausbauen & reuse</h4>
+              <p>DIY-Guide · 4 Schritte</p>
+            </div>
+          </div>
+          <div class="insp-card" onclick="showToast('Guide folgt bald')">
+            <div class="insp-card-img" style="background:#201a08;">🔋</div>
+            <div class="insp-card-body">
+              <h4>Vape-Akku recyceln</h4>
+              <p>Recycling-Guide</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="height: var(--gap);"></div>
+    </div>
+
+    <div class="bottom-nav">
+      <button class="nav-btn active" onclick="goTo('s-home')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4CAF50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        <span>Start</span>
+      </button>
+      <button class="nav-scan" onclick="openScanner()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round">
+          <path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/>
+          <path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/>
+          <rect x="7" y="7" width="10" height="10" rx="2"/>
+        </svg>
+      </button>
+      <button class="nav-btn" onclick="showToast('Profil – coming soon')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        <span>Profil</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN 2: SCANNER ══════════ -->
+  <div id="s-scanner" class="screen">
+
+    <video id="cam-video" autoplay playsinline muted></video>
+
+    <div class="cam-mask"></div>
+
+    <!-- scan frame sits on top -->
+    <div class="cam-overlay">
+      <div class="scan-frame">
+        <div class="c-br"></div>
+        <div class="c-bl"></div>
+        <div class="scan-line"></div>
+      </div>
+    </div>
+
+    <div class="cam-hint-text">Gerät in den Rahmen halten</div>
+
+    <!-- camera error -->
+    <div class="cam-error" id="cam-error">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C8A84B" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+      <p id="cam-error-msg">Kamera konnte nicht gestartet werden.<br>Bitte Berechtigung in den Browser-Einstellungen erlauben.</p>
+      <button onclick="startCamera()" style="background:var(--green);border:none;color:#fff;padding:10px 24px;border-radius:100px;font-size:14px;font-weight:600;cursor:pointer;margin-top:4px;">Erneut versuchen</button>
+    </div>
+
+    <!-- scanning animation overlay -->
+    <div id="scan-overlay">
+      <div class="spin-ring"></div>
+      <p id="scan-status">Text wird erkannt …</p>
+      <p id="scan-progress">0 %</p>
+    </div>
+
+    <!-- hidden canvas for frame capture -->
+    <canvas id="capture-canvas" style="display:none;"></canvas>
+
+    <!-- OCR result confirm sheet -->
+    <div id="ocr-sheet">
+      <div class="sheet-handle"></div>
+      <h2 id="ocr-sheet-title">Gerät erkannt?</h2>
+      <p class="sub" id="ocr-sheet-sub">Prüfe oder korrigiere das erkannte Modell, bevor wir nach Anleitungen suchen.</p>
+
+      <span class="ocr-field-label">Erkannter Text</span>
+      <div class="ocr-raw" id="ocr-raw">—</div>
+
+      <div class="ocr-chips" id="ocr-chips"></div>
+
+      <span class="ocr-field-label">Gerät / Modell</span>
+      <input class="ocr-input" id="ocr-input" type="text" placeholder="z. B. iPhone 14 Pro oder A2890" autocomplete="off">
+
+      <div class="ocr-actions">
+        <button class="ocr-btn ghost" onclick="hideOcrSheet()">Abbruch</button>
+        <button class="ocr-btn primary" onclick="confirmOcr()">Anleitungen suchen</button>
+      </div>
+    </div>
+
+    <button class="cam-back" onclick="closeCamera()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5M12 5l-7 7 7 7"/>
+      </svg>
+    </button>
+
+    <div class="cam-controls">
+      <button class="btn-gallery" title="Aus Galerie wählen" onclick="showToast('Galerie – coming soon')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+      </button>
+
+      <button class="btn-shutter" id="shutter-btn" onclick="triggerScan()">
+        <div class="btn-shutter-inner"></div>
+      </button>
+
+      <button class="btn-flip" title="Kamera wechseln" onclick="flipCamera()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C8A84B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+          <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN 3: RESULT ══════════ -->
+  <div id="s-result" class="screen">
+
+    <div class="result-header">
+      <button class="back-btn" onclick="goTo('s-home')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 5l-7 7 7 7"/>
+        </svg>
+      </button>
+      <div class="result-header-text">
+        <h1>mendooR</h1>
+        <p>Aus alt mach neu – keine Wissenschaft</p>
+      </div>
+    </div>
+
+    <div class="result-scroll">
+
+      <div class="product-card">
+        <div class="product-info">
+          <div class="product-tag">📱 Smartphone</div>
+          <h2 id="product-name">iPhone 14 Pro</h2>
+          <div class="product-model" id="product-model">Apple · A2890 · 2022</div>
+          <div class="product-status">
+            <div class="status-dot"></div>
+            <span class="status-lbl">Wiederverwendbar</span>
+          </div>
+        </div>
+        <div class="product-img-box">📱</div>
+      </div>
+
+      <div class="score-row">
+        <div class="score-pill g">
+          <div class="score-val">87%</div>
+          <div class="score-lbl">Reparierbar</div>
+        </div>
+        <div class="score-pill a">
+          <div class="score-val">62g</div>
+          <div class="score-lbl">Metalle</div>
+        </div>
+        <div class="score-pill b">
+          <div class="score-val">0.3g</div>
+          <div class="score-lbl">Gold</div>
+        </div>
+      </div>
+
+      <div class="sec-div">Produktbeschreibung</div>
+
+      <div class="menu-list">
+        <div class="menu-item" onclick="showToast('Technische Daten – coming soon')">
+          <div class="menu-icon-box" style="background:#1a2e1a;">📋</div>
+          <div class="menu-text">
+            <h4>Einzelheiten</h4>
+            <p>Technische Spezifikationen anzeigen</p>
+          </div>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+        <div class="menu-item" onclick="showToast('Materialdaten – coming soon')">
+          <div class="menu-icon-box" style="background:#2e1a1a;">⚗️</div>
+          <div class="menu-text">
+            <h4>Zusammensetzung</h4>
+            <p>Verbaute Materialien & Rohstoffe</p>
+          </div>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+        <div class="menu-item" onclick="openGuides()">
+          <div class="menu-icon-box" style="background:#141440;">🔧</div>
+          <div class="menu-text">
+            <h4>Repairguides</h4>
+            <p>Community-Anleitungen von iFixit</p>
+          </div>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+        <div class="menu-item" onclick="showToast('Recyclinghöfe in der Nähe – coming soon')">
+          <div class="menu-icon-box" style="background:#2a2210;">♻️</div>
+          <div class="menu-text">
+            <h4>Gerät kaputt?</h4>
+            <p>Richtig recyceln oder neu verwenden</p>
+          </div>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>
+
+      <!-- ── Quellenverzeichnis ── -->
+      <div class="sources-block">
+        <h3>Wissenschaftliche Quellen</h3>
+
+        <div class="source-item" onclick="openSource('https://ewastemonitor.info/wp-content/uploads/2024/12/GEM_2024_EN_11_NOV-web.pdf')">
+          <span class="source-cite">Baldé et al. (2024)</span>
+          <span class="source-title">Global E-waste Monitor 2024 – Zahlen & Kategorien zu Elektroschrott weltweit</span>
+          <span class="source-doi">ISBN 978-92-61-38781-5 · ITU/UNITAR</span>
+        </div>
+
+        <div class="source-item" onclick="openSource('https://www.researchgate.net/publication/380215371')">
+          <span class="source-cite">Bayraktaroğlu & İdemen (2024)</span>
+          <span class="source-title">Redefining Repair as a Value Co-Creation Process for Circular Economy – Facilitated DIY Repair (FDR)</span>
+          <span class="source-doi">DOI 10.57698/v18i1.01</span>
+        </div>
+
+        <div class="source-item" onclick="openSource('https://onlinelibrary.wiley.com/doi/abs/10.1111/jiec.13279')">
+          <span class="source-cite">Parajuly et al. (2024)</span>
+          <span class="source-title">Nutzeranforderungen an mobile Reparatur- und Recyclinganwendungen</span>
+          <span class="source-doi">DOI 10.1111/jiec.13279</span>
+        </div>
+
+        <div class="source-item" onclick="openSource('https://onlinelibrary.wiley.com/doi/full/10.1111/jiec.13451')">
+          <span class="source-cite">Sterkens et al. (2023)</span>
+          <span class="source-title">Mobile OCR-Pipelines zur Geräteerkennung und Textextraktion auf Typenschildern</span>
+          <span class="source-doi">DOI 10.1111/jiec.13451</span>
+        </div>
+
+        <div class="source-item" onclick="openSource('https://www.mdpi.com/2305-6304/9/10/236')">
+          <span class="source-cite">Attia et al. (2021)</span>
+          <span class="source-title">Urban Mining – Rückgewinnung von Sekundärrohstoffen aus Elektroschrott</span>
+          <span class="source-doi">DOI 10.3390/toxics9100236</span>
+        </div>
+      </div>
+
+      <div style="height: var(--gap);"></div>
+    </div>
+
+    <div class="bottom-nav">
+      <button class="nav-btn" onclick="goTo('s-home')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        <span>Start</span>
+      </button>
+      <button class="nav-scan" onclick="openScanner()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round">
+          <path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/>
+          <path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/>
+          <rect x="7" y="7" width="10" height="10" rx="2"/>
+        </svg>
+      </button>
+      <button class="nav-btn" onclick="showToast('Profil – coming soon')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        <span>Profil</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN 4: GUIDE LIST ══════════ -->
+  <div id="s-guides" class="screen">
+    <div class="sub-header">
+      <button class="back-btn" onclick="goTo('s-result')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="sub-header-text">
+        <h1>Repairguides</h1>
+        <p id="guides-device-label">iPhone 14 Pro</p>
+      </div>
+      <span class="lang-badge" id="guides-lang-badge" style="display:none;">DE</span>
+    </div>
+
+    <div class="guides-scroll" id="guides-list">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN 5: GUIDE DETAIL ══════════ -->
+  <div id="s-guide-detail" class="screen">
+    <div class="sub-header">
+      <button class="back-btn" onclick="goTo('s-guides')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="sub-header-text">
+        <h1 id="detail-header-title">Anleitung</h1>
+        <p>via iFixit</p>
+      </div>
+    </div>
+
+    <div class="detail-scroll" id="detail-content">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
