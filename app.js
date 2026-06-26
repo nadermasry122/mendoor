@@ -87,125 +87,230 @@ let ocrCandidates = [];
 
 async function triggerScan() {
   const video = document.getElementById('cam-video');
-  if (!video || !video.videoWidth) {
-    showToast('Kamera noch nicht bereit');
-    return;
-  }
+  if (!video || !video.videoWidth) { showToast('Kamera noch nicht bereit'); return; }
 
-  const overlay = document.getElementById('scan-overlay');
+  const overlay  = document.getElementById('scan-overlay');
   const statusEl = document.getElementById('scan-status');
-  const progEl = document.getElementById('scan-progress');
-  statusEl.textContent = 'Text wird erkannt …';
-  progEl.textContent = '0 %';
+  const progEl   = document.getElementById('scan-progress');
   overlay.classList.add('show');
 
-  // Capture the current frame, cropped to the scan-frame region (center square)
   const canvas = document.getElementById('capture-canvas');
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const side = Math.min(vw, vh) * 0.7;          // center 70% square ≈ scan frame
-  const sx = (vw - side) / 2, sy = (vh - side) / 2;
-  canvas.width = side; canvas.height = side;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, sx, sy, side, side, 0, 0, side, side);
+  const ctx    = canvas.getContext('2d');
 
-  // Light pre-processing: grayscale + contrast boost helps OCR on labels
-  try {
+  // ── 1. Multi-frame capture: take 3 frames 400ms apart, pick sharpest ──
+  statusEl.textContent = 'Schärfster Frame wird gewählt …';
+  progEl.textContent = '';
+
+  async function captureFrame() {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    // Crop to center square matching the on-screen scan frame (≈70% of shorter side)
+    const side = Math.min(vw, vh) * 0.72;
+    const sx = (vw - side) / 2, sy = (vh - side) / 2;
+    canvas.width = side; canvas.height = side;
+    ctx.drawImage(video, sx, sy, side, side, 0, 0, side, side);
+    // Laplacian variance = sharpness estimate
     const img = ctx.getImageData(0, 0, side, side);
-    const d = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-      const c = g > 140 ? 255 : (g < 90 ? 0 : g); // simple threshold-ish
-      d[i] = d[i+1] = d[i+2] = c;
-    }
-    ctx.putImageData(img, 0, 0);
-  } catch(_) { /* tainted canvas unlikely here; ignore */ }
+    return { img, sharpness: laplacianVariance(img, side) };
+  }
+
+  const frames = [];
+  for (let i = 0; i < 3; i++) {
+    frames.push(await captureFrame());
+    if (i < 2) await delay(400);
+  }
+  const best = frames.reduce((a, b) => b.sharpness > a.sharpness ? b : a);
+  ctx.putImageData(best.img, 0, 0);
+
+  // ── 2. Adaptive pre-processing ──
+  statusEl.textContent = 'Bild wird optimiert …';
+  adaptivePreprocess(ctx, canvas.width, canvas.height);
+
+  // ── 3. OCR with confidence gate ──
+  statusEl.textContent = 'Text wird erkannt …';
 
   try {
     if (typeof Tesseract === 'undefined') throw new Error('OCR lib not loaded');
 
-    const { data } = await Tesseract.recognize(canvas, 'eng', {
+    const { data } = await Tesseract.recognize(canvas, 'eng+deu', {
       logger: m => {
-        if (m.status === 'recognizing text') {
+        if (m.status === 'recognizing text')
           progEl.textContent = Math.round(m.progress * 100) + ' %';
-        } else if (m.status) {
-          statusEl.textContent = 'Verarbeite …';
-        }
       }
     });
 
     overlay.classList.remove('show');
-    const rawText = (data && data.text) ? data.text.trim() : '';
-    ocrCandidates = extractCandidates(rawText);
-    showOcrSheet(rawText, ocrCandidates);
+
+    // Only keep words with confidence ≥ 50 — filters out noise characters
+    const confidentText = filterByConfidence(data, 50);
+    const rawDisplay    = confidentText || '';
+    ocrCandidates = extractCandidates(confidentText);
+    showOcrSheet(rawDisplay, ocrCandidates);
 
   } catch (err) {
     overlay.classList.remove('show');
-    // OCR failed → still let the user type the model manually
     ocrCandidates = [];
     showOcrSheet('', []);
     showToast('Texterkennung nicht verfügbar – bitte manuell eingeben');
   }
 }
 
+/* Laplacian variance ≈ sharpness of an ImageData */
+function laplacianVariance(imgData, w) {
+  const d = imgData.data, h = imgData.height;
+  let sum = 0, sum2 = 0, n = 0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (y * w + x) * 4;
+      const gray = 0.299*d[idx] + 0.587*d[idx+1] + 0.114*d[idx+2];
+      const lap =
+        4*gray
+        - (0.299*d[idx-4]   + 0.587*d[idx-3]   + 0.114*d[idx-2])
+        - (0.299*d[idx+4]   + 0.587*d[idx+5]   + 0.114*d[idx+6])
+        - (0.299*d[idx-w*4] + 0.587*d[idx-w*4+1] + 0.114*d[idx-w*4+2])
+        - (0.299*d[idx+w*4] + 0.587*d[idx+w*4+1] + 0.114*d[idx+w*4+2]);
+      sum += lap; sum2 += lap * lap; n++;
+    }
+  }
+  const mean = sum / n;
+  return (sum2 / n) - mean * mean; // variance
+}
+
+/* Adaptive pre-processing: grayscale → CLAHE-like local contrast → mild threshold */
+function adaptivePreprocess(ctx, w, h) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+
+  // Step 1: Grayscale
+  const gray = new Uint8Array(w * h);
+  for (let i = 0; i < gray.length; i++) {
+    gray[i] = Math.round(0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2]);
+  }
+
+  // Step 2: Local mean in 32×32 tiles for adaptive threshold
+  const tileSize = 32;
+  const result = new Uint8Array(w * h);
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const tx = Math.floor(px / tileSize), ty = Math.floor(py / tileSize);
+      const x0 = tx*tileSize, y0 = ty*tileSize;
+      const x1 = Math.min(x0+tileSize, w), y1 = Math.min(y0+tileSize, h);
+      let localSum = 0, localN = 0;
+      for (let ly = y0; ly < y1; ly++)
+        for (let lx = x0; lx < x1; lx++) { localSum += gray[ly*w+lx]; localN++; }
+      const mean = localSum / localN;
+      // Pixel is "dark" (text) if it's 15 below local mean → white text on dark bg handled too
+      const v = gray[py*w+px];
+      result[py*w+px] = (v < mean - 15 || v > mean + 15) ? (v < mean ? 0 : 255) : 128;
+    }
+  }
+
+  // Step 3: Write back as grayscale
+  for (let i = 0; i < result.length; i++) {
+    const v = result[i];
+    d[i*4] = d[i*4+1] = d[i*4+2] = v;
+    d[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/* Filter OCR words by confidence threshold, return clean text */
+function filterByConfidence(data, minConf) {
+  if (!data || !data.words || !data.words.length) return '';
+  const goodWords = data.words
+    .filter(w => w.confidence >= minConf && w.text && w.text.trim().length > 0)
+    .map(w => w.text.trim());
+  if (!goodWords.length) return '';
+  // Rebuild lines roughly by sorting on baseline y
+  return data.lines
+    ? data.lines.map(line => {
+        const words = (line.words || []).filter(w => w.confidence >= minConf).map(w => w.text.trim());
+        return words.join(' ');
+      }).filter(Boolean).join('\n')
+    : goodWords.join(' ');
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 /* Pull likely device identifiers out of raw OCR text */
 function extractCandidates(text) {
   if (!text) return [];
-  const brands = ['iphone','ipad','macbook','galaxy','redmi','pixel','thinkpad','surface',
-    'oneplus','huawei','xiaomi','motorola','nokia','playstation','xbox','nintendo','gopro'];
-  const brandWords = ['apple','samsung','sony','lg','google','asus','acer','lenovo','dell',
-    'hp','msi','bosch','siemens','miele','philips','canon','nikon','huawei','xiaomi'];
-  const noise = /designed|california|made in|caution|do not|contains|warning|assembled|battery|rating|input|output|voltage/i;
+  const brands = ['iphone','ipad','macbook','imac','galaxy','redmi','pixel','thinkpad','surface',
+    'oneplus','huawei','xiaomi','motorola','nokia','playstation','xbox','nintendo','gopro',
+    'kindle','fairphone','poco','realme','honor'];
+  // Lines that are pure marketing/safety noise — only skipped if no model token is present
+  const noise = /designed by|california|made in|caution|do not open|user serviceable|warning|assembled in|this device complies/i;
 
   const lines = text.split(/\n+/).map(l => l.replace(/\s+/g,' ').trim()).filter(Boolean);
-  const scored = []; // {text, score}
+  const scored = [];
 
-  const push = (t, s) => { const v = t.trim(); if (v && v.length <= 40) scored.push({ text: v, score: s }); };
+  const push = (t, s) => {
+    let v = (t || '').trim().replace(/[.,;:]+$/,'');   // strip trailing punctuation
+    if (v && v.length >= 2 && v.length <= 40) scored.push({ text: v, score: s });
+  };
+
+  // Model-number patterns (run on the ORIGINAL line, case-sensitive where it helps)
+  const modelPatterns = [
+    /\bModel(?:\s*(?:No|Nr|Number|Name))?\.?\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{2,28})/i, // "Model: A2890", "Model No. SM-G991B"
+    /\bA\d{4}\b/g,                       // Apple style: A2890
+    /\b[A-Z]{2}-?[A-Z]?\d{3,5}[A-Z]{0,4}\b/g,   // SM-G991B, GA01234
+    /\b\d{2}[A-Z]{2}\d{3,5}[A-Z]{0,3}\b/g,      // Lenovo 20XW0041
+    /\b[A-Z]{1,4}\d{3,6}[A-Z]{0,3}\b/g,         // generic XYZ1234
+    /\bMTM[:\s]*([A-Z0-9\-]{4,20})/i            // Lenovo MTM
+  ];
 
   lines.forEach(line => {
-    if (noise.test(line)) return;            // skip marketing/safety text
     const lower = line.toLowerCase();
+    const isNoise = noise.test(line);
 
-    // strong: a product line that contains a model family word (iPhone 14 Pro, Galaxy S21)
-    if (brands.some(b => lower.includes(b))) push(line, 3);
+    // 1) Brand/product family line (iPhone 14 Pro, Galaxy S21) — strongest
+    if (!isNoise && brands.some(b => lower.includes(b))) push(line, 4);
 
-    // medium: explicit "Model: XYZ" pattern
-    const modelLabel = line.match(/model[:\s]+([A-Za-z0-9\- ]{3,30})/i);
-    if (modelLabel) push(modelLabel[1], 2);
+    // 2) Explicit "Model: ..." label — very strong
+    const labelMatch = line.match(modelPatterns[0]);
+    if (labelMatch && labelMatch[1]) push(labelMatch[1], 3);
 
-    // model-number tokens: A2890, SM-G991B, 20XW
-    const models = line.match(/\b[A-Z]{1,3}-?[A-Z]?\d{2,5}[A-Z]{0,3}\b/g);
-    if (models) models.forEach(mm => push(mm, 1));
+    // 3) Model-number tokens anywhere in the line (works even on "noise" lines)
+    for (let i = 1; i < modelPatterns.length; i++) {
+      const m = line.match(modelPatterns[i]);
+      if (m) {
+        // global patterns return array of matches; labelled ones return capture groups
+        if (modelPatterns[i].global) m.forEach(tok => push(tok, 2));
+        else if (m[1]) push(m[1], 2);
+      }
+    }
   });
 
-  // de-dup keeping highest score, then sort by score desc
+  // De-dup keeping highest score, then sort by score desc
   const map = new Map();
   scored.forEach(({text, score}) => {
     const key = text.toLowerCase();
     if (!map.has(key) || map.get(key).score < score) map.set(key, { text, score });
   });
-  return Array.from(map.values()).sort((a,b) => b.score - a.score).map(o => o.text).slice(0, 6);
+  return Array.from(map.values()).sort((a,b) => b.score - a.score).map(o => o.text).slice(0, 8);
 }
 
 /* Show the confirm sheet with raw text + tappable candidates */
 function showOcrSheet(rawText, candidates) {
-  const raw = document.getElementById('ocr-raw');
+  const raw   = document.getElementById('ocr-raw');
   const chips = document.getElementById('ocr-chips');
   const input = document.getElementById('ocr-input');
-  const sub = document.getElementById('ocr-sheet-sub');
+  const sub   = document.getElementById('ocr-sheet-sub');
   const title = document.getElementById('ocr-sheet-title');
 
-  if (rawText) {
-    raw.textContent = rawText.slice(0, 300);
+  // Only show raw text if it has real content (>3 meaningful chars)
+  const hasText = rawText && rawText.replace(/\s/g,'').length > 3;
+  if (hasText) {
+    raw.textContent = rawText.slice(0, 400);
     raw.classList.remove('empty');
   } else {
-    raw.textContent = 'Kein Text erkannt. Tippe das Modell unten ein.';
+    raw.textContent = 'Kein lesbarer Text erkannt – zu unscharf, schlechte Beleuchtung oder kein Typenschild sichtbar.';
     raw.classList.add('empty');
   }
 
   chips.innerHTML = '';
   if (candidates.length) {
     title.textContent = 'Gerät erkannt?';
-    sub.textContent = 'Tippe einen Vorschlag an oder korrigiere das Modell, bevor wir nach Anleitungen suchen.';
+    sub.textContent = 'Tippe einen Vorschlag an oder korrigiere das Modell manuell.';
     candidates.forEach(c => {
       const chip = document.createElement('button');
       chip.className = 'ocr-chip';
@@ -215,8 +320,10 @@ function showOcrSheet(rawText, candidates) {
     });
     input.value = candidates[0];
   } else {
-    title.textContent = 'Modell eingeben';
-    sub.textContent = 'Es wurde kein eindeutiges Modell gefunden. Gib Marke und Modell manuell ein.';
+    title.textContent = 'Modell manuell eingeben';
+    sub.textContent = hasText
+      ? 'Im erkannten Text wurde keine eindeutige Modellbezeichnung gefunden. Gib Marke und Modell selbst ein.'
+      : 'Halte die Kamera nah ans Typenschild (meist auf der Geräterückseite) und versuche es erneut — oder gib das Modell manuell ein.';
     input.value = '';
   }
 
@@ -326,40 +433,62 @@ function renderSkeletons() {
   list.innerHTML = html;
 }
 
-/* Fetch guides — tries German results first, then any language */
+/* Fetch guides — multi-strategy cascade so something always comes back */
 async function loadGuides(device) {
   renderSkeletons();
-  const badge = document.getElementById('guides-lang-badge');
-  badge.style.display = 'none';
+  document.getElementById('guides-lang-badge').style.display = 'none';
 
   try {
-    // Primary search (language-neutral — widest coverage)
-    let results = await searchGuides(device);
-
-    if (!results || results.length === 0) {
-      renderNoGuides(device);
-      return;
-    }
-
-    // Guides are loaded in German (machine-translated) on open,
-    // so we surface a DE badge to signal the preferred language.
-    badge.textContent = 'DE';
-    badge.style.display = 'block';
+    const results = await searchWithFallback(device);
+    if (!results || results.length === 0) { renderNoGuides(device); return; }
+    document.getElementById('guides-lang-badge').textContent = 'iFixit';
+    document.getElementById('guides-lang-badge').style.display = 'block';
     renderGuides(results);
-
   } catch (err) {
     renderGuidesError();
   }
 }
 
-/* Call the iFixit search endpoint */
-async function searchGuides(device) {
-  const url = `${IFIXIT_API}/search/${encodeURIComponent(device)}`
-            + `?doctypes=guide&limit=15`;
+/*
+  Search strategy cascade — from specific to broad:
+  1. Full query as-is              "iPhone 14 Pro"
+  2. First two tokens              "iPhone 14"
+  3. First token only (brand)      "iPhone"
+  4. Any model-number token found  "A2890"
+  Each step stops as soon as results come in.
+*/
+async function searchWithFallback(device) {
+  const queries = buildQueryCascade(device);
+  for (const q of queries) {
+    const results = await searchGuides(q);
+    if (results && results.length > 0) return results;
+  }
+  return [];
+}
+
+function buildQueryCascade(device) {
+  const clean = device.trim().replace(/\s+/g,' ');
+  const tokens = clean.split(' ').filter(Boolean);
+  const cascade = [clean]; // strategy 1: full string
+
+  if (tokens.length > 2) cascade.push(tokens.slice(0,2).join(' ')); // strategy 2: first 2 tokens
+  if (tokens.length > 1) cascade.push(tokens[0]);                    // strategy 3: first token
+
+  // strategy 4: any token that looks like a model number
+  tokens.forEach(t => {
+    if (/^[A-Z]{1,4}\d{2,6}[A-Z]{0,4}$/i.test(t) && !cascade.includes(t)) cascade.push(t);
+  });
+
+  // De-dup while preserving order
+  return [...new Set(cascade)];
+}
+
+/* Call the iFixit search endpoint for a single query string */
+async function searchGuides(query) {
+  const url = `${IFIXIT_API}/search/${encodeURIComponent(query)}?doctypes=guide&limit=15`;
   const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
   if (!res.ok) throw new Error('API ' + res.status);
   const data = await res.json();
-  // search results live in data.results
   return (data.results || []).filter(r => r.dataType === 'guide');
 }
 
