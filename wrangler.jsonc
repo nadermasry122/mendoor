@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mendoor",
+  "name": "mendoor1",
   "main": "functions/_worker.js",
   "compatibility_date": "2026-07-09",
   "compatibility_flags": ["nodejs_compat"],
