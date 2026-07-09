@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "assets": {
-    "directory": ".",
+    "directory": "./test",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   }
