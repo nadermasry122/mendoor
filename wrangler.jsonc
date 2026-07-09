@@ -8,6 +8,6 @@
   "assets": {
     "directory": "./test",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "none"
   }
 }
