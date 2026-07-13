@@ -82,8 +82,11 @@ function openScanner() {
 }
 
 /* ── Scan trigger ── */
-/* ── Real OCR scan ── */
+/* ── OCR scan via Google Cloud Vision (proxied through Cloudflare Worker) ── */
 let ocrCandidates = [];
+
+// Point this to your deployed Worker
+const VISION_ENDPOINT = '/api/vision';
 
 async function triggerScan() {
   const video = document.getElementById('cam-video');
@@ -103,12 +106,11 @@ async function triggerScan() {
 
   async function captureFrame() {
     const vw = video.videoWidth, vh = video.videoHeight;
-    // Crop to center square matching the on-screen scan frame (≈70% of shorter side)
+    // Crop to center square matching the on-screen scan frame (≈72% of shorter side)
     const side = Math.min(vw, vh) * 0.72;
     const sx = (vw - side) / 2, sy = (vh - side) / 2;
     canvas.width = side; canvas.height = side;
     ctx.drawImage(video, sx, sy, side, side, 0, 0, side, side);
-    // Laplacian variance = sharpness estimate
     const img = ctx.getImageData(0, 0, side, side);
     return { img, sharpness: laplacianVariance(img, side) };
   }
@@ -121,37 +123,85 @@ async function triggerScan() {
   const best = frames.reduce((a, b) => b.sharpness > a.sharpness ? b : a);
   ctx.putImageData(best.img, 0, 0);
 
-  // ── 2. Adaptive pre-processing ──
-  statusEl.textContent = 'Bild wird optimiert …';
-  adaptivePreprocess(ctx, canvas.width, canvas.height);
+  // ── 2. Encode as Base64 JPEG (small enough to POST) ──
+  statusEl.textContent = 'Bild wird gesendet …';
+  progEl.textContent = '';
 
-  // ── 3. OCR with confidence gate ──
+  let base64;
+  try {
+    base64 = await canvasToBase64Jpeg(canvas, 0.85);
+  } catch (err) {
+    overlay.classList.remove('show');
+    showToast('Bild konnte nicht codiert werden');
+    return;
+  }
+
+  // ── 3. Call Cloud Vision via Worker ──
   statusEl.textContent = 'Text wird erkannt …';
 
   try {
-    if (typeof Tesseract === 'undefined') throw new Error('OCR lib not loaded');
-
-    const { data } = await Tesseract.recognize(canvas, 'eng+deu', {
-      logger: m => {
-        if (m.status === 'recognizing text')
-          progEl.textContent = Math.round(m.progress * 100) + ' %';
-      }
+    const resp = await fetch(VISION_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64 })
     });
 
     overlay.classList.remove('show');
 
-    // Only keep words with confidence ≥ 50 — filters out noise characters
-    const confidentText = filterByConfidence(data, 50);
-    const rawDisplay    = confidentText || '';
-    ocrCandidates = extractCandidates(confidentText);
-    showOcrSheet(rawDisplay, ocrCandidates);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showToast('Erkennung fehlgeschlagen: ' + (err.error || resp.status));
+      ocrCandidates = [];
+      showOcrSheet('', []);
+      return;
+    }
+
+    const data = await resp.json();
+    const words = Array.isArray(data.words) ? data.words : [];
+    const fullText = data.text || '';
+
+    // ── Validation gate — reject noise scans ──
+    if (!isRealText(words)) {
+      // Nothing readable → skip straight to manual input, no raw text shown
+      ocrCandidates = [];
+      showOcrSheet(null, []);
+    } else {
+      const confidentText = filterWords(words, 70, fullText);
+      ocrCandidates = extractCandidates(confidentText);
+      showOcrSheet(confidentText, ocrCandidates);
+    }
 
   } catch (err) {
     overlay.classList.remove('show');
     ocrCandidates = [];
     showOcrSheet('', []);
-    showToast('Texterkennung nicht verfügbar – bitte manuell eingeben');
+    showToast('Erkennung nicht verfügbar – bitte manuell eingeben');
   }
+}
+
+/* Canvas → Base64 JPEG (without the data:image/jpeg;base64, prefix) */
+function canvasToBase64Jpeg(canvas, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (!blob) return reject(new Error('Blob failed'));
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        const idx = dataUrl.indexOf(',');
+        resolve(idx > -1 ? dataUrl.slice(idx + 1) : dataUrl);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    }, 'image/jpeg', quality);
+  });
+}
+
+/* Vision returns flat words with confidence 0..100 — mirror our old filter output shape */
+function filterWords(words, minConf, fullText) {
+  if (!words || !words.length) return fullText || '';
+  const kept = words.filter(w => (w.confidence ?? 0) >= minConf && w.text && w.text.trim().length > 0);
+  if (!kept.length) return '';
+  return kept.map(w => w.text.trim()).join(' ');
 }
 
 /* Laplacian variance ≈ sharpness of an ImageData */
@@ -213,20 +263,43 @@ function adaptivePreprocess(ctx, w, h) {
   ctx.putImageData(img, 0, 0);
 }
 
+/*
+  isRealText — rejects noise (floor, wall, fabric) before it reaches the UI.
+  Returns true only when the word list looks like a real label/sign.
+*/
+function isRealText(words) {
+  if (!words || words.length === 0) return false;
+
+  // Rule 1: need ≥2 words with confidence ≥70 AND length ≥2 chars
+  const confidentWords = words.filter(w => w.confidence >= 70 && w.text.trim().length >= 2);
+  if (confidentWords.length < 2) return false;
+
+  // Rule 2: average confidence of all words ≥60
+  const avgConf = words.reduce((s, w) => s + w.confidence, 0) / words.length;
+  if (avgConf < 60) return false;
+
+  // Rule 3: at least one real alphanumeric token (not just symbols)
+  const hasRealWord = words.some(w =>
+    w.confidence >= 65 && /[A-Za-z0-9]{2,}/.test(w.text)
+  );
+  if (!hasRealWord) return false;
+
+  // Rule 4: symbol ratio — | = . - ~ chars dominate noise scans
+  const allText = words.map(w => w.text).join('');
+  const symbolCount = (allText.match(/[|=\-.~^_]/g) || []).length;
+  if (symbolCount / allText.length > 0.3) return false;
+
+  return true;
+}
+
 /* Filter OCR words by confidence threshold, return clean text */
 function filterByConfidence(data, minConf) {
   if (!data || !data.words || !data.words.length) return '';
-  const goodWords = data.words
-    .filter(w => w.confidence >= minConf && w.text && w.text.trim().length > 0)
-    .map(w => w.text.trim());
-  if (!goodWords.length) return '';
-  // Rebuild lines roughly by sorting on baseline y
-  return data.lines
-    ? data.lines.map(line => {
-        const words = (line.words || []).filter(w => w.confidence >= minConf).map(w => w.text.trim());
-        return words.join(' ');
-      }).filter(Boolean).join('\n')
-    : goodWords.join(' ');
+  if (!data.lines) return data.words.filter(w => w.confidence >= minConf).map(w => w.text.trim()).join(' ');
+  return data.lines.map(line => {
+    const words = (line.words || []).filter(w => w.confidence >= minConf).map(w => w.text.trim());
+    return words.join(' ');
+  }).filter(Boolean).join('\n');
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -297,13 +370,20 @@ function showOcrSheet(rawText, candidates) {
   const sub   = document.getElementById('ocr-sheet-sub');
   const title = document.getElementById('ocr-sheet-title');
 
-  // Only show raw text if it has real content (>3 meaningful chars)
-  const hasText = rawText && rawText.replace(/\s/g,'').length > 3;
+  // null  = noise rejected (floor/wall scan)
+  // ''    = OCR ran but returned nothing useful
+  // text  = something was read
+  const noiseRejected = rawText === null;
+  const hasText = !noiseRejected && rawText && rawText.replace(/\s/g,'').length > 3;
+
   if (hasText) {
     raw.textContent = rawText.slice(0, 400);
     raw.classList.remove('empty');
+  } else if (noiseRejected) {
+    raw.textContent = 'Kein Typenschild erkannt — der gescannte Bereich enthält keinen lesbaren Text.';
+    raw.classList.add('empty');
   } else {
-    raw.textContent = 'Kein lesbarer Text erkannt – zu unscharf, schlechte Beleuchtung oder kein Typenschild sichtbar.';
+    raw.textContent = 'Text zu undeutlich — bitte näher ans Typenschild halten oder Beleuchtung verbessern.';
     raw.classList.add('empty');
   }
 
@@ -321,9 +401,9 @@ function showOcrSheet(rawText, candidates) {
     input.value = candidates[0];
   } else {
     title.textContent = 'Modell manuell eingeben';
-    sub.textContent = hasText
-      ? 'Im erkannten Text wurde keine eindeutige Modellbezeichnung gefunden. Gib Marke und Modell selbst ein.'
-      : 'Halte die Kamera nah ans Typenschild (meist auf der Geräterückseite) und versuche es erneut — oder gib das Modell manuell ein.';
+    sub.textContent = noiseRejected
+      ? 'Richte die Kamera direkt auf das Typenschild des Geräts (meist Geräterückseite oder Unterseite) und scanne erneut. Oder gib das Modell unten ein.'
+      : 'Im erkannten Text wurde keine Modellbezeichnung gefunden. Gib Marke und Modell manuell ein.';
     input.value = '';
   }
 

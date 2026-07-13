@@ -9,5 +9,12 @@
     "directory": "./test",
     "binding": "ASSETS",
     "not_found_handling": "none"
-  }
+  },
+  "secrets_store_secrets": [
+    {
+      "binding": "GOOGLE_VISION_API_KEY",
+      "store_id": "474f30c9972f4137a00753d09323ea56",
+      "secret_name": "googlecloudvisionapi"
+    }
+  ]
 }
