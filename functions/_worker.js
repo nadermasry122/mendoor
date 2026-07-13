@@ -45,6 +45,10 @@ async function handleVision(request, env) {
     return json({ error: 'Method not allowed. Use POST.' }, 405);
   }
 
+  // Debug flag: ?debug=1 returns the raw Vision response for inspection
+  const url = new URL(request.url);
+  const debug = url.searchParams.get('debug') === '1';
+
   // Parse body
   let body;
   try {
@@ -95,24 +99,39 @@ async function handleVision(request, env) {
 
   if (!visionResp.ok) {
     const errText = await visionResp.text().catch(() => '');
-    return json({ error: `Vision API error ${visionResp.status}`, detail: errText.slice(0, 300) }, visionResp.status);
+    return json({ error: `Vision API error ${visionResp.status}`, detail: errText.slice(0, 500) }, visionResp.status);
   }
 
   const data = await visionResp.json().catch(() => null);
   if (!data || !Array.isArray(data.responses) || !data.responses[0]) {
-    return json({ error: 'Empty Vision response' }, 502);
+    return json({ error: 'Empty Vision response', raw: data }, 502);
   }
 
-  // Extract clean result
   const r = data.responses[0];
   if (r.error) {
-    return json({ error: 'Vision returned error', detail: r.error.message || 'unknown' }, 502);
+    return json({ error: 'Vision returned error', detail: r.error.message || 'unknown', raw: r }, 502);
   }
 
+  // ── Debug mode: return the complete raw response ──
+  if (debug) {
+    return json({
+      debug: true,
+      imageBytes: image.length,
+      hasFullTextAnnotation: !!r.fullTextAnnotation,
+      hasTextAnnotations: Array.isArray(r.textAnnotations) && r.textAnnotations.length > 0,
+      fullText: r.fullTextAnnotation?.text || null,
+      textAnnotations: (r.textAnnotations || []).slice(0, 20).map(t => ({
+        description: t.description,
+        locale: t.locale
+      })),
+      rawResponse: r
+    });
+  }
+
+  // ── Normal mode: bereinigte Antwort für die App ──
   const fullText = (r.fullTextAnnotation && r.fullTextAnnotation.text) || '';
   const words = [];
 
-  // Flatten hierarchical words with per-word confidence
   const pages = (r.fullTextAnnotation && r.fullTextAnnotation.pages) || [];
   for (const page of pages) {
     for (const block of (page.blocks || [])) {
@@ -122,7 +141,7 @@ async function handleVision(request, env) {
           if (!text) continue;
           words.push({
             text,
-            confidence: Math.round(((word.confidence ?? 0)) * 100)   // 0..100 like Tesseract
+            confidence: Math.round(((word.confidence ?? 0)) * 100)
           });
         }
       }

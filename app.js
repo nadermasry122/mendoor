@@ -88,6 +88,9 @@ let ocrCandidates = [];
 // Point this to your deployed Worker
 const VISION_ENDPOINT = '/api/vision';
 
+// Debug mode: toggle by adding ?debug=1 to the URL
+const DEBUG_MODE = new URLSearchParams(location.search).get('debug') === '1';
+
 async function triggerScan() {
   const video = document.getElementById('cam-video');
   if (!video || !video.videoWidth) { showToast('Kamera noch nicht bereit'); return; }
@@ -139,8 +142,10 @@ async function triggerScan() {
   // ── 3. Call Cloud Vision via Worker ──
   statusEl.textContent = 'Text wird erkannt …';
 
+  const endpoint = DEBUG_MODE ? VISION_ENDPOINT + '?debug=1' : VISION_ENDPOINT;
+
   try {
-    const resp = await fetch(VISION_ENDPOINT, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: base64 })
@@ -150,6 +155,10 @@ async function triggerScan() {
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
+      if (DEBUG_MODE) {
+        showDebugPanel({ httpStatus: resp.status, error: err }, canvas.toDataURL('image/jpeg', 0.6));
+        return;
+      }
       showToast('Erkennung fehlgeschlagen: ' + (err.error || resp.status));
       ocrCandidates = [];
       showOcrSheet('', []);
@@ -157,6 +166,13 @@ async function triggerScan() {
     }
 
     const data = await resp.json();
+
+    // ── Debug mode: show raw response, skip the OCR sheet ──
+    if (DEBUG_MODE) {
+      showDebugPanel(data, canvas.toDataURL('image/jpeg', 0.6));
+      return;
+    }
+
     const words = Array.isArray(data.words) ? data.words : [];
     const fullText = data.text || '';
 
@@ -173,10 +189,91 @@ async function triggerScan() {
 
   } catch (err) {
     overlay.classList.remove('show');
+    if (DEBUG_MODE) {
+      showDebugPanel({ jsError: err.message, stack: err.stack }, null);
+      return;
+    }
     ocrCandidates = [];
     showOcrSheet('', []);
     showToast('Erkennung nicht verfügbar – bitte manuell eingeben');
   }
+}
+
+/*
+ * Debug panel – shown when the app is opened with ?debug=1.
+ * Reveals the exact bytes sent to Vision and the exact response received,
+ * so we can diagnose whether the problem is on the client (image capture),
+ * the wire (upload/encoding) or Vision itself.
+ */
+function showDebugPanel(data, imageDataUrl) {
+  let panel = document.getElementById('debug-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'debug-panel';
+    panel.style.cssText = `
+      position:fixed; inset:0; z-index:1000;
+      background:#0d0d0d; color:#e0e0e0;
+      overflow-y:auto; padding:16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size:13px; line-height:1.5;
+    `;
+    document.body.appendChild(panel);
+  }
+
+  const preview = imageDataUrl
+    ? `<img src="${imageDataUrl}" style="width:100%;max-width:320px;border-radius:8px;border:1px solid #333;margin-bottom:12px;display:block;">`
+    : '<div style="color:#888;margin-bottom:12px;">(kein Bild verfügbar)</div>';
+
+  const summary = data.debug
+    ? `
+        <div style="background:#1a2e1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#4CAF50;font-weight:600;margin-bottom:6px;">Vision Summary</div>
+          <div>Bild-Bytes gesendet: <b>${data.imageBytes}</b></div>
+          <div>hasFullTextAnnotation: <b>${data.hasFullTextAnnotation}</b></div>
+          <div>hasTextAnnotations: <b>${data.hasTextAnnotations}</b></div>
+        </div>
+        <div style="background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#C8A84B;font-weight:600;margin-bottom:6px;">fullText</div>
+          <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:monospace;">${escapeHtmlDbg(data.fullText || '(null)')}</pre>
+        </div>
+        <div style="background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#C8A84B;font-weight:600;margin-bottom:6px;">textAnnotations (top 20)</div>
+          <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:monospace;">${escapeHtmlDbg(JSON.stringify(data.textAnnotations, null, 2))}</pre>
+        </div>
+      `
+    : `
+        <div style="background:#2e1a1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#e57373;font-weight:600;margin-bottom:6px;">Response</div>
+          <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:monospace;">${escapeHtmlDbg(JSON.stringify(data, null, 2))}</pre>
+        </div>
+      `;
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div style="font-size:15px;font-weight:700;color:#4CAF50;">🔍 Debug: Vision Response</div>
+      <button onclick="document.getElementById('debug-panel').remove(); goTo('s-home');"
+              style="background:#4CAF50;border:none;color:#fff;padding:8px 16px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;">
+        Schließen
+      </button>
+    </div>
+    <div style="color:#888;font-size:11px;margin-bottom:12px;">
+      Gesendetes Bild (Vorschau):
+    </div>
+    ${preview}
+    ${summary}
+    <details style="background:#1a1a1a;border-radius:8px;padding:12px;">
+      <summary style="color:#888;cursor:pointer;font-weight:600;">Vollständige Antwort anzeigen</summary>
+      <pre style="white-space:pre-wrap;word-break:break-word;margin-top:8px;font-family:monospace;font-size:11px;">${escapeHtmlDbg(JSON.stringify(data, null, 2))}</pre>
+    </details>
+    <div style="height:40px;"></div>
+  `;
+}
+
+function escapeHtmlDbg(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 /* Canvas → Base64 JPEG (without the data:image/jpeg;base64, prefix) */
