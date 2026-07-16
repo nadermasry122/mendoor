@@ -82,70 +82,324 @@ function openScanner() {
 }
 
 /* ── Scan trigger ── */
-/* ── Real OCR scan ── */
+/* ── OCR scan via Google Cloud Vision (proxied through Cloudflare Worker) ── */
 let ocrCandidates = [];
+
+// Point this to your deployed Worker
+const VISION_ENDPOINT = '/api/vision';
+
+// Debug mode: toggle by adding ?debug=1 to the URL
+const DEBUG_MODE = new URLSearchParams(location.search).get('debug') === '1';
 
 async function triggerScan() {
   const video = document.getElementById('cam-video');
-  if (!video || !video.videoWidth) {
-    showToast('Kamera noch nicht bereit');
+  if (!video || !video.videoWidth) { showToast('Kamera noch nicht bereit'); return; }
+
+  const overlay  = document.getElementById('scan-overlay');
+  const statusEl = document.getElementById('scan-status');
+  const progEl   = document.getElementById('scan-progress');
+  overlay.classList.add('show');
+
+  const canvas = document.getElementById('capture-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  // ── 1. Multi-frame capture: take 3 frames 400ms apart, pick sharpest ──
+  statusEl.textContent = 'Schärfster Frame wird gewählt …';
+  progEl.textContent = '';
+
+  async function captureFrame() {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    // Crop to center square matching the on-screen scan frame (≈72% of shorter side)
+    const side = Math.min(vw, vh) * 0.72;
+    const sx = (vw - side) / 2, sy = (vh - side) / 2;
+    canvas.width = side; canvas.height = side;
+    ctx.drawImage(video, sx, sy, side, side, 0, 0, side, side);
+    const img = ctx.getImageData(0, 0, side, side);
+    return { img, sharpness: laplacianVariance(img, side) };
+  }
+
+  const frames = [];
+  for (let i = 0; i < 3; i++) {
+    frames.push(await captureFrame());
+    if (i < 2) await delay(400);
+  }
+  const best = frames.reduce((a, b) => b.sharpness > a.sharpness ? b : a);
+  ctx.putImageData(best.img, 0, 0);
+
+  // ── 2. Encode as Base64 JPEG (small enough to POST) ──
+  statusEl.textContent = 'Bild wird gesendet …';
+  progEl.textContent = '';
+
+  let base64;
+  try {
+    base64 = await canvasToBase64Jpeg(canvas, 0.85);
+  } catch (err) {
+    overlay.classList.remove('show');
+    showToast('Bild konnte nicht codiert werden');
     return;
   }
 
-  const overlay = document.getElementById('scan-overlay');
-  const statusEl = document.getElementById('scan-status');
-  const progEl = document.getElementById('scan-progress');
+  // ── 3. Call Cloud Vision via Worker ──
   statusEl.textContent = 'Text wird erkannt …';
-  progEl.textContent = '0 %';
-  overlay.classList.add('show');
 
-  // Capture the current frame, cropped to the scan-frame region (center square)
-  const canvas = document.getElementById('capture-canvas');
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const side = Math.min(vw, vh) * 0.7;          // center 70% square ≈ scan frame
-  const sx = (vw - side) / 2, sy = (vh - side) / 2;
-  canvas.width = side; canvas.height = side;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, sx, sy, side, side, 0, 0, side, side);
-
-  // Light pre-processing: grayscale + contrast boost helps OCR on labels
-  try {
-    const img = ctx.getImageData(0, 0, side, side);
-    const d = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-      const c = g > 140 ? 255 : (g < 90 ? 0 : g); // simple threshold-ish
-      d[i] = d[i+1] = d[i+2] = c;
-    }
-    ctx.putImageData(img, 0, 0);
-  } catch(_) { /* tainted canvas unlikely here; ignore */ }
+  const endpoint = DEBUG_MODE ? VISION_ENDPOINT + '?debug=1' : VISION_ENDPOINT;
 
   try {
-    if (typeof Tesseract === 'undefined') throw new Error('OCR lib not loaded');
-
-    const { data } = await Tesseract.recognize(canvas, 'eng', {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          progEl.textContent = Math.round(m.progress * 100) + ' %';
-        } else if (m.status) {
-          statusEl.textContent = 'Verarbeite …';
-        }
-      }
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64 })
     });
 
     overlay.classList.remove('show');
-    const rawText = (data && data.text) ? data.text.trim() : '';
-    ocrCandidates = extractCandidates(rawText);
-    showOcrSheet(rawText, ocrCandidates);
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (DEBUG_MODE) {
+        showDebugPanel({ httpStatus: resp.status, error: err }, canvas.toDataURL('image/jpeg', 0.6));
+        return;
+      }
+      showToast('Erkennung fehlgeschlagen: ' + (err.error || resp.status));
+      ocrCandidates = [];
+      showOcrSheet('', []);
+      return;
+    }
+
+    const data = await resp.json();
+
+    // ── Debug mode: show raw response, skip the OCR sheet ──
+    if (DEBUG_MODE) {
+      showDebugPanel(data, canvas.toDataURL('image/jpeg', 0.6));
+      return;
+    }
+
+    const words = Array.isArray(data.words) ? data.words : [];
+    const fullText = data.text || '';
+
+    // ── Validation gate — reject noise scans ──
+    if (!isRealText(words)) {
+      // Nothing readable → skip straight to manual input, no raw text shown
+      ocrCandidates = [];
+      showOcrSheet(null, []);
+    } else {
+      const confidentText = filterWords(words, 70, fullText);
+      ocrCandidates = extractCandidates(confidentText);
+      showOcrSheet(confidentText, ocrCandidates);
+    }
 
   } catch (err) {
     overlay.classList.remove('show');
-    // OCR failed → still let the user type the model manually
+    if (DEBUG_MODE) {
+      showDebugPanel({ jsError: err.message, stack: err.stack }, null);
+      return;
+    }
     ocrCandidates = [];
     showOcrSheet('', []);
-    showToast('Texterkennung nicht verfügbar – bitte manuell eingeben');
+    showToast('Erkennung nicht verfügbar – bitte manuell eingeben');
   }
 }
+
+/*
+ * Debug panel – shown when the app is opened with ?debug=1.
+ * Reveals the exact bytes sent to Vision and the exact response received,
+ * so we can diagnose whether the problem is on the client (image capture),
+ * the wire (upload/encoding) or Vision itself.
+ */
+function showDebugPanel(data, imageDataUrl) {
+  let panel = document.getElementById('debug-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'debug-panel';
+    panel.style.cssText = `
+      position:fixed; inset:0; z-index:1000;
+      background:#0d0d0d; color:#e0e0e0;
+      overflow-y:auto; padding:16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size:13px; line-height:1.5;
+    `;
+    document.body.appendChild(panel);
+  }
+
+  const preview = imageDataUrl
+    ? `<img src="${imageDataUrl}" style="width:100%;max-width:320px;border-radius:8px;border:1px solid #333;margin-bottom:12px;display:block;">`
+    : '<div style="color:#888;margin-bottom:12px;">(kein Bild verfügbar)</div>';
+
+  const summary = data.debug
+    ? `
+        <div style="background:#1a2e1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#4CAF50;font-weight:600;margin-bottom:6px;">Vision Summary</div>
+          <div>Bild-Bytes gesendet: <b>${data.imageBytes}</b></div>
+          <div>hasFullTextAnnotation: <b>${data.hasFullTextAnnotation}</b></div>
+          <div>hasTextAnnotations: <b>${data.hasTextAnnotations}</b></div>
+        </div>
+        <div style="background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#C8A84B;font-weight:600;margin-bottom:6px;">fullText</div>
+          <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:monospace;">${escapeHtmlDbg(data.fullText || '(null)')}</pre>
+        </div>
+        <div style="background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#C8A84B;font-weight:600;margin-bottom:6px;">textAnnotations (top 20)</div>
+          <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:monospace;">${escapeHtmlDbg(JSON.stringify(data.textAnnotations, null, 2))}</pre>
+        </div>
+      `
+    : `
+        <div style="background:#2e1a1a;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="color:#e57373;font-weight:600;margin-bottom:6px;">Response</div>
+          <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:monospace;">${escapeHtmlDbg(JSON.stringify(data, null, 2))}</pre>
+        </div>
+      `;
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div style="font-size:15px;font-weight:700;color:#4CAF50;">🔍 Debug: Vision Response</div>
+      <button onclick="document.getElementById('debug-panel').remove(); goTo('s-home');"
+              style="background:#4CAF50;border:none;color:#fff;padding:8px 16px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;">
+        Schließen
+      </button>
+    </div>
+    <div style="color:#888;font-size:11px;margin-bottom:12px;">
+      Gesendetes Bild (Vorschau):
+    </div>
+    ${preview}
+    ${summary}
+    <details style="background:#1a1a1a;border-radius:8px;padding:12px;">
+      <summary style="color:#888;cursor:pointer;font-weight:600;">Vollständige Antwort anzeigen</summary>
+      <pre style="white-space:pre-wrap;word-break:break-word;margin-top:8px;font-family:monospace;font-size:11px;">${escapeHtmlDbg(JSON.stringify(data, null, 2))}</pre>
+    </details>
+    <div style="height:40px;"></div>
+  `;
+}
+
+function escapeHtmlDbg(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* Canvas → Base64 JPEG (without the data:image/jpeg;base64, prefix) */
+function canvasToBase64Jpeg(canvas, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (!blob) return reject(new Error('Blob failed'));
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        const idx = dataUrl.indexOf(',');
+        resolve(idx > -1 ? dataUrl.slice(idx + 1) : dataUrl);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    }, 'image/jpeg', quality);
+  });
+}
+
+/* Vision returns flat words with confidence 0..100 — mirror our old filter output shape */
+function filterWords(words, minConf, fullText) {
+  if (!words || !words.length) return fullText || '';
+  const kept = words.filter(w => (w.confidence ?? 0) >= minConf && w.text && w.text.trim().length > 0);
+  if (!kept.length) return '';
+  return kept.map(w => w.text.trim()).join(' ');
+}
+
+/* Laplacian variance ≈ sharpness of an ImageData */
+function laplacianVariance(imgData, w) {
+  const d = imgData.data, h = imgData.height;
+  let sum = 0, sum2 = 0, n = 0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (y * w + x) * 4;
+      const gray = 0.299*d[idx] + 0.587*d[idx+1] + 0.114*d[idx+2];
+      const lap =
+        4*gray
+        - (0.299*d[idx-4]   + 0.587*d[idx-3]   + 0.114*d[idx-2])
+        - (0.299*d[idx+4]   + 0.587*d[idx+5]   + 0.114*d[idx+6])
+        - (0.299*d[idx-w*4] + 0.587*d[idx-w*4+1] + 0.114*d[idx-w*4+2])
+        - (0.299*d[idx+w*4] + 0.587*d[idx+w*4+1] + 0.114*d[idx+w*4+2]);
+      sum += lap; sum2 += lap * lap; n++;
+    }
+  }
+  const mean = sum / n;
+  return (sum2 / n) - mean * mean; // variance
+}
+
+/* Adaptive pre-processing: grayscale → CLAHE-like local contrast → mild threshold */
+function adaptivePreprocess(ctx, w, h) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+
+  // Step 1: Grayscale
+  const gray = new Uint8Array(w * h);
+  for (let i = 0; i < gray.length; i++) {
+    gray[i] = Math.round(0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2]);
+  }
+
+  // Step 2: Local mean in 32×32 tiles for adaptive threshold
+  const tileSize = 32;
+  const result = new Uint8Array(w * h);
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const tx = Math.floor(px / tileSize), ty = Math.floor(py / tileSize);
+      const x0 = tx*tileSize, y0 = ty*tileSize;
+      const x1 = Math.min(x0+tileSize, w), y1 = Math.min(y0+tileSize, h);
+      let localSum = 0, localN = 0;
+      for (let ly = y0; ly < y1; ly++)
+        for (let lx = x0; lx < x1; lx++) { localSum += gray[ly*w+lx]; localN++; }
+      const mean = localSum / localN;
+      // Pixel is "dark" (text) if it's 15 below local mean → white text on dark bg handled too
+      const v = gray[py*w+px];
+      result[py*w+px] = (v < mean - 15 || v > mean + 15) ? (v < mean ? 0 : 255) : 128;
+    }
+  }
+
+  // Step 3: Write back as grayscale
+  for (let i = 0; i < result.length; i++) {
+    const v = result[i];
+    d[i*4] = d[i*4+1] = d[i*4+2] = v;
+    d[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/*
+  isRealText — rejects noise (floor, wall, fabric) before it reaches the UI.
+  Returns true only when the word list looks like a real label/sign.
+*/
+function isRealText(words) {
+  if (!words || words.length === 0) return false;
+
+  // Rule 1: need ≥2 words with confidence ≥70 AND length ≥2 chars
+  const confidentWords = words.filter(w => w.confidence >= 70 && w.text.trim().length >= 2);
+  if (confidentWords.length < 2) return false;
+
+  // Rule 2: average confidence of all words ≥60
+  const avgConf = words.reduce((s, w) => s + w.confidence, 0) / words.length;
+  if (avgConf < 60) return false;
+
+  // Rule 3: at least one real alphanumeric token (not just symbols)
+  const hasRealWord = words.some(w =>
+    w.confidence >= 65 && /[A-Za-z0-9]{2,}/.test(w.text)
+  );
+  if (!hasRealWord) return false;
+
+  // Rule 4: symbol ratio — | = . - ~ chars dominate noise scans
+  const allText = words.map(w => w.text).join('');
+  const symbolCount = (allText.match(/[|=\-.~^_]/g) || []).length;
+  if (symbolCount / allText.length > 0.3) return false;
+
+  return true;
+}
+
+/* Filter OCR words by confidence threshold, return clean text */
+function filterByConfidence(data, minConf) {
+  if (!data || !data.words || !data.words.length) return '';
+  if (!data.lines) return data.words.filter(w => w.confidence >= minConf).map(w => w.text.trim()).join(' ');
+  return data.lines.map(line => {
+    const words = (line.words || []).filter(w => w.confidence >= minConf).map(w => w.text.trim());
+    return words.join(' ');
+  }).filter(Boolean).join('\n');
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /* Pull likely device identifiers out of raw OCR text */
 function extractCandidates(text) {
@@ -207,24 +461,33 @@ function extractCandidates(text) {
 
 /* Show the confirm sheet with raw text + tappable candidates */
 function showOcrSheet(rawText, candidates) {
-  const raw = document.getElementById('ocr-raw');
+  const raw   = document.getElementById('ocr-raw');
   const chips = document.getElementById('ocr-chips');
   const input = document.getElementById('ocr-input');
-  const sub = document.getElementById('ocr-sheet-sub');
+  const sub   = document.getElementById('ocr-sheet-sub');
   const title = document.getElementById('ocr-sheet-title');
 
-  if (rawText) {
-    raw.textContent = rawText.slice(0, 300);
+  // null  = noise rejected (floor/wall scan)
+  // ''    = OCR ran but returned nothing useful
+  // text  = something was read
+  const noiseRejected = rawText === null;
+  const hasText = !noiseRejected && rawText && rawText.replace(/\s/g,'').length > 3;
+
+  if (hasText) {
+    raw.textContent = rawText.slice(0, 400);
     raw.classList.remove('empty');
+  } else if (noiseRejected) {
+    raw.textContent = 'Kein Typenschild erkannt — der gescannte Bereich enthält keinen lesbaren Text.';
+    raw.classList.add('empty');
   } else {
-    raw.textContent = 'Kein Text erkannt. Tippe das Modell unten ein.';
+    raw.textContent = 'Text zu undeutlich — bitte näher ans Typenschild halten oder Beleuchtung verbessern.';
     raw.classList.add('empty');
   }
 
   chips.innerHTML = '';
   if (candidates.length) {
     title.textContent = 'Gerät erkannt?';
-    sub.textContent = 'Tippe einen Vorschlag an oder korrigiere das Modell, bevor wir nach Anleitungen suchen.';
+    sub.textContent = 'Tippe einen Vorschlag an oder korrigiere das Modell manuell.';
     candidates.forEach(c => {
       const chip = document.createElement('button');
       chip.className = 'ocr-chip';
@@ -234,8 +497,10 @@ function showOcrSheet(rawText, candidates) {
     });
     input.value = candidates[0];
   } else {
-    title.textContent = 'Modell eingeben';
-    sub.textContent = 'Es wurde kein eindeutiges Modell gefunden. Gib Marke und Modell manuell ein.';
+    title.textContent = 'Modell manuell eingeben';
+    sub.textContent = noiseRejected
+      ? 'Richte die Kamera direkt auf das Typenschild des Geräts (meist Geräterückseite oder Unterseite) und scanne erneut. Oder gib das Modell unten ein.'
+      : 'Im erkannten Text wurde keine Modellbezeichnung gefunden. Gib Marke und Modell manuell ein.';
     input.value = '';
   }
 
@@ -345,40 +610,62 @@ function renderSkeletons() {
   list.innerHTML = html;
 }
 
-/* Fetch guides — tries German results first, then any language */
+/* Fetch guides — multi-strategy cascade so something always comes back */
 async function loadGuides(device) {
   renderSkeletons();
-  const badge = document.getElementById('guides-lang-badge');
-  badge.style.display = 'none';
+  document.getElementById('guides-lang-badge').style.display = 'none';
 
   try {
-    // Primary search (language-neutral — widest coverage)
-    let results = await searchGuides(device);
-
-    if (!results || results.length === 0) {
-      renderNoGuides(device);
-      return;
-    }
-
-    // Guides are loaded in German (machine-translated) on open,
-    // so we surface a DE badge to signal the preferred language.
-    badge.textContent = 'DE';
-    badge.style.display = 'block';
+    const results = await searchWithFallback(device);
+    if (!results || results.length === 0) { renderNoGuides(device); return; }
+    document.getElementById('guides-lang-badge').textContent = 'iFixit';
+    document.getElementById('guides-lang-badge').style.display = 'block';
     renderGuides(results);
-
   } catch (err) {
     renderGuidesError();
   }
 }
 
-/* Call the iFixit search endpoint */
-async function searchGuides(device) {
-  const url = `${IFIXIT_API}/search/${encodeURIComponent(device)}`
-            + `?doctypes=guide&limit=15`;
+/*
+  Search strategy cascade — from specific to broad:
+  1. Full query as-is              "iPhone 14 Pro"
+  2. First two tokens              "iPhone 14"
+  3. First token only (brand)      "iPhone"
+  4. Any model-number token found  "A2890"
+  Each step stops as soon as results come in.
+*/
+async function searchWithFallback(device) {
+  const queries = buildQueryCascade(device);
+  for (const q of queries) {
+    const results = await searchGuides(q);
+    if (results && results.length > 0) return results;
+  }
+  return [];
+}
+
+function buildQueryCascade(device) {
+  const clean = device.trim().replace(/\s+/g,' ');
+  const tokens = clean.split(' ').filter(Boolean);
+  const cascade = [clean]; // strategy 1: full string
+
+  if (tokens.length > 2) cascade.push(tokens.slice(0,2).join(' ')); // strategy 2: first 2 tokens
+  if (tokens.length > 1) cascade.push(tokens[0]);                    // strategy 3: first token
+
+  // strategy 4: any token that looks like a model number
+  tokens.forEach(t => {
+    if (/^[A-Z]{1,4}\d{2,6}[A-Z]{0,4}$/i.test(t) && !cascade.includes(t)) cascade.push(t);
+  });
+
+  // De-dup while preserving order
+  return [...new Set(cascade)];
+}
+
+/* Call the iFixit search endpoint for a single query string */
+async function searchGuides(query) {
+  const url = `${IFIXIT_API}/search/${encodeURIComponent(query)}?doctypes=guide&limit=15`;
   const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
   if (!res.ok) throw new Error('API ' + res.status);
   const data = await res.json();
-  // search results live in data.results
   return (data.results || []).filter(r => r.dataType === 'guide');
 }
 
