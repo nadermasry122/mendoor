@@ -270,8 +270,9 @@ async function triggerScan() {
   const canvas = document.getElementById('capture-canvas');
   const ctx    = canvas.getContext('2d');
 
-  // ── 1. Multi-frame capture: take 3 frames 400ms apart, pick sharpest ──
-  statusEl.textContent = 'Schärfster Frame wird gewählt …';
+  // ── 1. Quick dual-frame capture: 2 frames 120ms apart, pick sharper ──
+  // Cloud Vision is robust, so we don't need Tesseract's heavy 3-frame averaging.
+  statusEl.textContent = 'Aufnahme …';
   progEl.textContent = '';
 
   async function captureFrame() {
@@ -286,9 +287,9 @@ async function triggerScan() {
   }
 
   const frames = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     frames.push(await captureFrame());
-    if (i < 2) await delay(400);
+    if (i < 1) await delay(120);
   }
   const best = frames.reduce((a, b) => b.sharpness > a.sharpness ? b : a);
   ctx.putImageData(best.img, 0, 0);
@@ -472,8 +473,11 @@ function filterWords(words, minConf, fullText) {
 function laplacianVariance(imgData, w) {
   const d = imgData.data, h = imgData.height;
   let sum = 0, sum2 = 0, n = 0;
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
+  // Subsample every 2nd pixel — sharpness is a large-scale property,
+  // so this stays accurate while cutting work by ~75% (faster shutter on mobile).
+  const STEP = 2;
+  for (let y = 1; y < h - 1; y += STEP) {
+    for (let x = 1; x < w - 1; x += STEP) {
       const idx = (y * w + x) * 4;
       const gray = 0.299*d[idx] + 0.587*d[idx+1] + 0.114*d[idx+2];
       const lap =

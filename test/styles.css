@@ -11,7 +11,7 @@
   --gold:      #C8A84B;
   --text:      #ffffff;
   --text2:     #aaaaaa;
-  --text3:     #555555;
+  --text3:     #8a8a8a;
   --border:    #222222;
   --radius:    clamp(12px, 3vw, 18px);
   --gap:       clamp(8px, 2vw, 16px);
@@ -227,7 +227,7 @@ h1, h2, h3, h4, p, span, div, a, input {
 .cam-mask {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 55% 45% at 50% 44%, transparent 60%, rgba(0,0,0,0.72) 100%);
+  background: radial-gradient(ellipse 35% 15% at 30% 24%, transparent 80%, rgba(0,0,0,0.72) 100%);
   pointer-events: none;
   z-index: 1;
 }
