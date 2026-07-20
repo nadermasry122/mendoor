@@ -34,7 +34,7 @@
     <div class="home-scroll">
 
     <div class="home-header">
-      <h1>mendoo(R)1</h1>
+      <h1>mendooR</h1>
       <p>Aus alt mach neu – keine Wissenschaft</p>
     </div>
 
@@ -153,7 +153,7 @@
   <!-- ══════════ SCREEN 2: SCANNER ══════════ -->
   <div id="s-scanner" class="screen">
 
-    <video id="cam-video" autoplay playsinline muted></video>
+    <video id="cam-video" autoplay playsinline muted onclick="tapToFocus(event)"></video>
 
     <div class="cam-mask"></div>
 
@@ -210,6 +210,23 @@
         <path d="M19 12H5M12 5l-7 7 7 7"/>
       </svg>
     </button>
+
+    <!-- Zoom slider (shown only if supported) -->
+    <div id="cam-zoom-wrap" style="display:none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>
+      <input type="range" id="cam-zoom" min="1" max="5" step="0.1" value="1" oninput="setZoom(this.value)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    </div>
+
+    <!-- Side controls: torch + lens (shown only if supported) -->
+    <div class="cam-side-controls">
+      <button class="cam-side-btn" id="btn-torch" style="display:none;" title="Blitz" onclick="toggleTorch()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </button>
+      <button class="cam-side-btn" id="btn-lens" style="display:none;" title="Objektiv wechseln" onclick="cycleLens()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+      </button>
+    </div>
 
     <div class="cam-controls">
       <button class="btn-gallery" title="Aus Galerie wählen" onclick="showToast('Galerie – coming soon')">
@@ -314,8 +331,8 @@
           <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </div>
       </div>
-      
-      <!-- DAS IST EIN CODEBLOCK IN DER APP, WELCHER DIE SOURCES ANZEIGT. WIRD DERZEIT NICHT VERWENDET, DA DIE APP NOCH IN ENTWICKLUNG IST. -->
+
+      <!-- ── Quellenverzeichnis ── -->
       <div class="sources-block">
         <h3>Wissenschaftliche Quellen</h3>
 
@@ -349,7 +366,7 @@
           <span class="source-doi">DOI 10.3390/toxics9100236</span>
         </div>
       </div>
-    -->
+
       <div style="height: var(--gap);"></div>
     </div>
 

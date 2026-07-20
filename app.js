@@ -30,9 +30,15 @@ function selectCat(el) {
   el.classList.add('active');
 }
 
-/* ── Camera state ── */
+/* ══════════════════════════════════════
+   CAMERA — with capability detection
+══════════════════════════════════════ */
 let stream = null;
 let facingMode = 'environment';
+let videoTrack = null;          // current MediaStreamTrack
+let videoDevices = [];          // all camera input devices
+let currentDeviceIndex = -1;    // index into videoDevices when cycling lenses
+let usingDeviceId = null;       // explicit deviceId override (for lens switching)
 
 async function startCamera() {
   const video = document.getElementById('cam-video');
@@ -40,15 +46,26 @@ async function startCamera() {
   errBox.classList.remove('show');
 
   // Stop any existing stream
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; videoTrack = null; }
+
+  // Build constraints — prefer explicit deviceId (lens switch), else facingMode
+  const videoConstraints = usingDeviceId
+    ? { deviceId: { exact: usingDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    : { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } };
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
+    stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
     video.srcObject = stream;
-    video.play();
+    await video.play();
+
+    videoTrack = stream.getVideoTracks()[0] || null;
+
+    // Enumerate devices once (needs an active stream for labels on some browsers)
+    await refreshVideoDevices();
+
+    // Configure the adaptive controls based on what this track supports
+    setupCameraCapabilities();
+
   } catch(err) {
     let msg = 'Kamera konnte nicht gestartet werden.';
     if (err.name === 'NotAllowedError')
@@ -57,26 +74,176 @@ async function startCamera() {
       msg = 'Keine Kamera gefunden.\nStelle sicher, dass dein Gerät eine Kamera hat.';
     else if (err.name === 'NotReadableError')
       msg = 'Kamera wird von einer anderen App verwendet.';
+    else if (err.name === 'OverconstrainedError') {
+      // deviceId no longer valid → fall back to facingMode
+      usingDeviceId = null;
+      return startCamera();
+    }
     document.getElementById('cam-error-msg').textContent = msg;
     errBox.classList.add('show');
   }
 }
 
+/* Enumerate available video input devices */
+async function refreshVideoDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter(d => d.kind === 'videoinput');
+  } catch { videoDevices = []; }
+}
+
+/* Detect capabilities of the current track and show/hide controls accordingly */
+function setupCameraCapabilities() {
+  const zoomWrap  = document.getElementById('cam-zoom-wrap');
+  const torchBtn  = document.getElementById('btn-torch');
+  const lensBtn   = document.getElementById('btn-lens');
+
+  // Defaults: hide everything, reveal only what's supported
+  if (zoomWrap) zoomWrap.style.display = 'none';
+  if (torchBtn) torchBtn.style.display = 'none';
+  if (lensBtn)  lensBtn.style.display  = 'none';
+
+  if (!videoTrack || typeof videoTrack.getCapabilities !== 'function') return;
+
+  let caps = {};
+  try { caps = videoTrack.getCapabilities(); } catch { caps = {}; }
+
+  // ── Zoom ──
+  if (caps.zoom && zoomWrap) {
+    const slider = document.getElementById('cam-zoom');
+    slider.min   = caps.zoom.min;
+    slider.max   = caps.zoom.max;
+    slider.step  = caps.zoom.step || 0.1;
+    let settings = {};
+    try { settings = videoTrack.getSettings(); } catch {}
+    slider.value = settings.zoom || caps.zoom.min;
+    zoomWrap.style.display = 'flex';
+  }
+
+  // ── Torch (flashlight) ──
+  if (caps.torch && torchBtn) {
+    torchBtn.style.display = 'flex';
+    torchBtn.classList.remove('active');
+    torchOn = false;
+  }
+
+  // ── Lens switch: only show if more than 2 cameras on this side ──
+  if (lensBtn && videoDevices.length > 2) {
+    lensBtn.style.display = 'flex';
+  }
+}
+
+/* Zoom — called by the slider */
+function setZoom(value) {
+  if (!videoTrack) return;
+  try {
+    videoTrack.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] });
+  } catch (err) {
+    // silently ignore — some browsers reject mid-stream
+  }
+}
+
+/* Torch toggle */
+let torchOn = false;
+function toggleTorch() {
+  if (!videoTrack) return;
+  torchOn = !torchOn;
+  const btn = document.getElementById('btn-torch');
+  videoTrack.applyConstraints({ advanced: [{ torch: torchOn }] })
+    .then(() => { if (btn) btn.classList.toggle('active', torchOn); })
+    .catch(() => { showToast('Blitz nicht verfügbar'); torchOn = false; });
+}
+
+/* Tap-to-focus — sets focus point where the user taps the video */
+async function tapToFocus(evt) {
+  if (!videoTrack || typeof videoTrack.getCapabilities !== 'function') return;
+  let caps = {};
+  try { caps = videoTrack.getCapabilities(); } catch { return; }
+
+  // Only if focus control is available
+  if (!caps.focusMode || !caps.focusMode.includes('manual')) {
+    // Some devices support pointsOfInterest with continuous focus
+    if (!caps.pointsOfInterest) return;
+  }
+
+  const video = document.getElementById('cam-video');
+  const rect = video.getBoundingClientRect();
+  const x = (evt.clientX - rect.left) / rect.width;
+  const y = (evt.clientY - rect.top) / rect.height;
+
+  // Visual focus ring
+  showFocusRing(evt.clientX - rect.left, evt.clientY - rect.top);
+
+  try {
+    const constraints = { advanced: [{}] };
+    if (caps.pointsOfInterest) constraints.advanced[0].pointsOfInterest = [{ x, y }];
+    if (caps.focusMode && caps.focusMode.includes('single-shot'))
+      constraints.advanced[0].focusMode = 'single-shot';
+    await videoTrack.applyConstraints(constraints);
+  } catch {
+    // focus not applyable — the ring still gives feedback
+  }
+}
+
+function showFocusRing(x, y) {
+  let ring = document.getElementById('focus-ring');
+  if (!ring) {
+    ring = document.createElement('div');
+    ring.id = 'focus-ring';
+    document.getElementById('s-scanner').appendChild(ring);
+  }
+  ring.style.left = x + 'px';
+  ring.style.top  = y + 'px';
+  ring.classList.remove('pulse');
+  void ring.offsetWidth; // reflow to restart animation
+  ring.classList.add('pulse');
+}
+
 function closeCamera() {
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; videoTrack = null; }
   document.getElementById('cam-video').srcObject = null;
   document.getElementById('cam-error').classList.remove('show');
   document.getElementById('scan-overlay').classList.remove('show');
+  usingDeviceId = null;
+  torchOn = false;
   goTo('s-home');
 }
 
+/* Flip front/back */
 function flipCamera() {
+  usingDeviceId = null;   // clear explicit lens choice
   facingMode = facingMode === 'environment' ? 'user' : 'environment';
   if (stream) startCamera();
   showToast(facingMode === 'user' ? 'Frontkamera' : 'Rückkamera');
 }
 
+/* Cycle through available lenses (wide, tele, ultrawide) on supported devices */
+async function cycleLens() {
+  if (videoDevices.length < 2) { showToast('Keine weiteren Objektive'); return; }
+
+  // Determine current device, advance to next
+  let currentId = usingDeviceId;
+  if (!currentId && videoTrack) {
+    try { currentId = videoTrack.getSettings().deviceId; } catch {}
+  }
+  let idx = videoDevices.findIndex(d => d.deviceId === currentId);
+  idx = (idx + 1) % videoDevices.length;
+  usingDeviceId = videoDevices[idx].deviceId;
+
+  await startCamera();
+
+  // Try to name the lens from its label
+  const label = (videoDevices[idx].label || '').toLowerCase();
+  let name = 'Objektiv ' + (idx + 1);
+  if (label.includes('ultra') || label.includes('wide angle')) name = 'Ultraweitwinkel';
+  else if (label.includes('tele')) name = 'Teleobjektiv';
+  else if (label.includes('wide')) name = 'Weitwinkel';
+  showToast(name);
+}
+
 function openScanner() {
+  facingMode = 'environment';  // always start with back camera for OCR
+  usingDeviceId = null;
   goTo('s-scanner');
   startCamera();
 }
