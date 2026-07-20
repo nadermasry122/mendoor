@@ -21,19 +21,32 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  width: 100%; height: 100%;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
   background: #111;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  overflow-x: hidden;
+}
+
+/* Prevent any long text/URL from forcing horizontal scroll */
+h1, h2, h3, h4, p, span, div, a, input {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  -webkit-hyphens: auto;
+  hyphens: auto;
 }
 
 /* ══════════════════════════════════════
    APP SHELL — fills viewport, no scroll
 ══════════════════════════════════════ */
 #app {
-  width: 100dvw;
-  height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  height: 100vh;          /* fallback */
+  height: 100dvh;         /* dynamic viewport on modern mobile */
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -65,7 +78,6 @@ html, body {
 #s-home { background: var(--bg); }
 
 .home-header {
-  flex-shrink: 0;
   padding: var(--gap) var(--pad) clamp(6px,1.5vh,12px);
 }
 .home-header h1 {
@@ -79,7 +91,6 @@ html, body {
 
 /* Section label row */
 .sec-row {
-  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -90,7 +101,6 @@ html, body {
 
 /* Category chips */
 .cats-scroll {
-  flex-shrink: 0;
   display: flex;
   gap: clamp(8px,2vw,12px);
   overflow-x: auto;
@@ -123,7 +133,7 @@ html, body {
 .cat-chip.active span { color: var(--green); }
 
 /* Scanner CTA */
-.scanner-wrap { flex-shrink: 0; padding: 0 var(--pad); }
+.scanner-wrap { padding: 0 var(--pad); }
 .scanner-box {
   background: var(--green-dim);
   border-radius: var(--radius);
@@ -146,8 +156,10 @@ html, body {
 .home-scroll {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   min-height: 0;
+  padding-bottom: var(--gap);
 }
 .home-scroll::-webkit-scrollbar { display: none; }
 
@@ -350,6 +362,97 @@ html, body {
   color: var(--gold);
   backdrop-filter: blur(4px);
   -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Zoom slider ── */
+#cam-zoom-wrap {
+  position: absolute;
+  bottom: calc(clamp(90px,20vh,150px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(70vw, 320px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+  border-radius: 100px;
+  z-index: 11;
+}
+#cam-zoom {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.3);
+  outline: none;
+}
+#cam-zoom::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--green);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+#cam-zoom::-moz-range-thumb {
+  width: 20px; height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: var(--green);
+  cursor: pointer;
+}
+
+/* ── Side controls (torch / lens) ── */
+.cam-side-controls {
+  position: absolute;
+  right: var(--pad);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 11;
+}
+.cam-side-btn {
+  width: clamp(44px,11vw,52px);
+  height: clamp(44px,11vw,52px);
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(8px);
+  color: rgba(255,255,255,0.9);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+.cam-side-btn.active {
+  background: var(--green);
+  color: #fff;
+}
+
+/* ── Tap-to-focus ring ── */
+#focus-ring {
+  position: absolute;
+  width: 70px; height: 70px;
+  margin-left: -35px; margin-top: -35px;
+  border: 2px solid var(--green);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 12;
+}
+#focus-ring.pulse {
+  animation: focusPulse 0.8s ease-out;
+}
+@keyframes focusPulse {
+  0%   { opacity: 0; transform: scale(1.5); }
+  30%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
 }
 
 /* ══════════════════════════════════════
