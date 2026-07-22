@@ -350,9 +350,17 @@ async function triggerScan() {
       ocrCandidates = [];
       showOcrSheet(null, []);
     } else {
-      const confidentText = filterWords(words, 70, fullText);
-      ocrCandidates = extractCandidates(confidentText);
-      showOcrSheet(confidentText, ocrCandidates);
+      // Vision's fullText keeps line breaks, which the type-plate
+      // classifier needs — so filter on that rather than flattened words.
+      const plateText = filterToTypePlate(fullText);
+      ocrCandidates = extractCandidates(fullText);
+
+      if (!plateText && ocrCandidates.length === 0) {
+        // Text was found, but nothing on it looks like a type plate
+        showOcrSheet('', []);
+      } else {
+        showOcrSheet(plateText || fullText, ocrCandidates);
+      }
     }
 
   } catch (err) {
@@ -572,62 +580,179 @@ function filterByConfidence(data, minConf) {
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-/* Pull likely device identifiers out of raw OCR text */
+/* ══════════════════════════════════════════════════
+   TYPE-PLATE CLASSIFIER
+   Cloud Vision returns every piece of text it sees —
+   including packaging prose, manuals and marketing.
+   These helpers keep only what looks like a rating
+   plate / model label and drop flowing text.
+══════════════════════════════════════════════════ */
+
+// Common function words. A line full of these is prose, not a type plate.
+const STOPWORDS = new Set([
+  // English
+  'the','a','an','and','or','of','to','in','on','for','with','from','by','at','as',
+  'is','are','was','were','be','been','this','that','these','those','it','its','you',
+  'your','we','our','they','their','can','will','may','should','must','not','no',
+  'all','any','more','than','when','if','how','what','which','please','use','using',
+  // German
+  'der','die','das','den','dem','des','ein','eine','einen','einem','einer','und','oder',
+  'von','zu','im','in','auf','für','mit','aus','bei','nach','über','unter','ist','sind',
+  'war','waren','wird','werden','kann','können','soll','sollen','muss','müssen','nicht',
+  'alle','mehr','als','wenn','wie','was','welche','bitte','sie','ihr','ihre','diese','dieser'
+]);
+
+// Labels that strongly indicate a rating plate
+const PLATE_LABELS = /\b(model|modell|type|typ|p\/?n|part\s*(no|number)|s\/?n|serial|seriennummer|art\.?-?nr|ref|imei|fcc\s*id|ic\s*:|mtm|sku|ean|upc)\b/i;
+
+// Electrical / regulatory markings typical for rating plates
+const PLATE_SPECS = /\b(\d+([.,]\d+)?\s*(v|va|w|kw|a|ma|mah|wh|hz|khz|ghz|db|kg|g|ml|l)\b|~|⎓|dc|ac|rohs|weee|ce\b|ul\b|class\s*[ivx]+)\b/i;
+
+const KNOWN_BRANDS = ['apple','iphone','ipad','macbook','imac','samsung','galaxy','sony','lg',
+  'philips','bosch','siemens','miele','aeg','panasonic','toshiba','sharp','hp','dell','lenovo',
+  'thinkpad','asus','acer','msi','huawei','xiaomi','redmi','poco','oneplus','oppo','vivo','realme',
+  'honor','motorola','nokia','google','pixel','microsoft','surface','xbox','playstation','nintendo',
+  'canon','nikon','fujifilm','gopro','bose','jbl','sennheiser','logitech','razer','anker','fairphone',
+  'kindle','amazon','dyson','braun','krups','delonghi','tefal','severin','medion','grundig','beko'];
+
+/*
+ * Decide whether a line reads like prose (a sentence) rather than
+ * plate data. Prose lines are dropped before candidate extraction.
+ */
+function isProseLine(line) {
+  const words = line.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 5) return false;                  // short lines are plate-like
+
+  // Ratio of stopwords — prose is full of them
+  const stopCount = words.filter(w =>
+    STOPWORDS.has(w.toLowerCase().replace(/[^a-zäöüß]/gi, ''))
+  ).length;
+  const stopRatio = stopCount / words.length;
+
+  // Sentence punctuation is a prose signal
+  const endsLikeSentence = /[.!?]\s*$/.test(line.trim());
+
+  // Plate lines are digit-rich; prose is not
+  const digitRatio = (line.match(/\d/g) || []).length / line.length;
+
+  if (stopRatio >= 0.28) return true;                  // clearly a sentence
+  if (words.length > 9 && digitRatio < 0.06) return true; // long and no numbers
+  if (endsLikeSentence && stopRatio >= 0.18) return true;
+
+  return false;
+}
+
+/*
+ * Score how strongly a line looks like rating-plate content.
+ * 0 = not plate-like, higher = more plate-like.
+ */
+function typePlateScore(line) {
+  if (!line || !line.trim()) return 0;
+  const trimmed = line.trim();
+  const lower = trimmed.toLowerCase();
+  let score = 0;
+
+  if (PLATE_LABELS.test(trimmed)) score += 4;                          // "Model:", "S/N", "FCC ID"
+  if (KNOWN_BRANDS.some(b => lower.includes(b))) score += 3;           // brand mention
+  if (PLATE_SPECS.test(trimmed)) score += 2;                           // 5V / 2.4A / 50Hz
+  if (/\b[A-Z0-9][A-Z0-9\-\/]{3,}\b/.test(trimmed)) score += 2;        // code-like token
+  if (/^[A-Z0-9\s\-\/.:]+$/.test(trimmed) && trimmed.length <= 30) score += 1; // short ALL-CAPS
+
+  const digitRatio = (trimmed.match(/\d/g) || []).length / trimmed.length;
+  if (digitRatio > 0.15) score += 1;
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length <= 5) score += 1;                                   // plates are terse
+
+  return score;
+}
+
+/*
+ * Reduce raw OCR text to the lines that plausibly come from a type plate.
+ * Returns a cleaned multi-line string.
+ */
+function filterToTypePlate(text) {
+  if (!text) return '';
+  const lines = text.split(/\n+/)
+    .map(l => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const kept = lines
+    .filter(l => !isProseLine(l))
+    .map(l => ({ line: l, score: typePlateScore(l) }))
+    .filter(o => o.score >= 2)                 // must show at least some plate signal
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12)                              // cap so the UI stays readable
+    .map(o => o.line);
+
+  return kept.join('\n');
+}
+
+/* Pull likely device identifiers out of type-plate text */
 function extractCandidates(text) {
   if (!text) return [];
-  const brands = ['iphone','ipad','macbook','imac','galaxy','redmi','pixel','thinkpad','surface',
-    'oneplus','huawei','xiaomi','motorola','nokia','playstation','xbox','nintendo','gopro',
-    'kindle','fairphone','poco','realme','honor'];
-  // Lines that are pure marketing/safety noise — only skipped if no model token is present
-  const noise = /designed by|california|made in|caution|do not open|user serviceable|warning|assembled in|this device complies/i;
 
-  const lines = text.split(/\n+/).map(l => l.replace(/\s+/g,' ').trim()).filter(Boolean);
+  // Work only on plate-like lines
+  const plateText = filterToTypePlate(text);
+  if (!plateText) return [];
+
+  const lines = plateText.split(/\n+/).map(l => l.trim()).filter(Boolean);
   const scored = [];
 
   const push = (t, s) => {
-    let v = (t || '').trim().replace(/[.,;:]+$/,'');   // strip trailing punctuation
-    if (v && v.length >= 2 && v.length <= 40) scored.push({ text: v, score: s });
+    let v = (t || '').trim().replace(/^[:\-#.\s]+|[.,;:\-\s]+$/g, '');
+    // Reject pure noise tokens and things that are obviously not models
+    if (!v || v.length < 3 || v.length > 40) return;
+    if (/^\d{1,2}$/.test(v)) return;                        // lone small numbers
+    if (STOPWORDS.has(v.toLowerCase())) return;
+    scored.push({ text: v, score: s });
   };
 
-  // Model-number patterns (run on the ORIGINAL line, case-sensitive where it helps)
-  const modelPatterns = [
-    /\bModel(?:\s*(?:No|Nr|Number|Name))?\.?\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{2,28})/i, // "Model: A2890", "Model No. SM-G991B"
-    /\bA\d{4}\b/g,                       // Apple style: A2890
-    /\b[A-Z]{2}-?[A-Z]?\d{3,5}[A-Z]{0,4}\b/g,   // SM-G991B, GA01234
-    /\b\d{2}[A-Z]{2}\d{3,5}[A-Z]{0,3}\b/g,      // Lenovo 20XW0041
-    /\b[A-Z]{1,4}\d{3,6}[A-Z]{0,3}\b/g,         // generic XYZ1234
-    /\bMTM[:\s]*([A-Z0-9\-]{4,20})/i            // Lenovo MTM
+  // Model-number patterns, most specific first
+  const patterns = [
+    { re: /\b(?:model|modell|typ|type)\s*(?:no|nr|number|name)?\.?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i, cap: 1, score: 6 },
+    { re: /\b(?:p\/?n|part\s*(?:no|number))\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i, cap: 1, score: 5 },
+    { re: /\bMTM\s*[:#]?\s*([A-Z0-9\-]{4,20})/i, cap: 1, score: 5 },
+    { re: /\bA\d{4}\b/g, score: 4 },                            // Apple: A2890
+    { re: /\b[A-Z]{2}-?[A-Z]?\d{3,5}[A-Z]{0,4}\b/g, score: 4 }, // SM-G991B
+    { re: /\b\d{2}[A-Z]{2}\d{3,5}[A-Z]{0,3}\b/g, score: 3 },    // Lenovo 20XW0041
+    { re: /\b[A-Z]{2,5}\d{3,6}[A-Z]{0,3}\b/g, score: 3 }        // generic WW90T554
   ];
 
   lines.forEach(line => {
     const lower = line.toLowerCase();
-    const isNoise = noise.test(line);
 
-    // 1) Brand/product family line (iPhone 14 Pro, Galaxy S21) — strongest
-    if (!isNoise && brands.some(b => lower.includes(b))) push(line, 4);
-
-    // 2) Explicit "Model: ..." label — very strong
-    const labelMatch = line.match(modelPatterns[0]);
-    if (labelMatch && labelMatch[1]) push(labelMatch[1], 3);
-
-    // 3) Model-number tokens anywhere in the line (works even on "noise" lines)
-    for (let i = 1; i < modelPatterns.length; i++) {
-      const m = line.match(modelPatterns[i]);
-      if (m) {
-        // global patterns return array of matches; labelled ones return capture groups
-        if (modelPatterns[i].global) m.forEach(tok => push(tok, 2));
-        else if (m[1]) push(m[1], 2);
-      }
+    // Brand + product-family line is the most useful search term
+    const brandHit = KNOWN_BRANDS.find(b => lower.includes(b));
+    if (brandHit) {
+      // Keep the line if it's short enough to be a product name
+      const words = line.split(/\s+/).filter(Boolean);
+      if (words.length <= 6) push(line, 7);
+      else push(brandHit, 4);
     }
+
+    patterns.forEach(({ re, cap, score }) => {
+      if (re.global) {
+        const all = line.match(re);
+        if (all) all.forEach(tok => push(tok, score));
+      } else {
+        const m = line.match(re);
+        if (m && m[cap]) push(m[cap], score);
+      }
+    });
   });
 
-  // De-dup keeping highest score, then sort by score desc
+  // De-dup keeping highest score, then sort
   const map = new Map();
-  scored.forEach(({text, score}) => {
+  scored.forEach(({ text, score }) => {
     const key = text.toLowerCase();
     if (!map.has(key) || map.get(key).score < score) map.set(key, { text, score });
   });
-  return Array.from(map.values()).sort((a,b) => b.score - a.score).map(o => o.text).slice(0, 8);
+
+  return Array.from(map.values())
+    .sort((a, b) => b.score - a.score)
+    .map(o => o.text)
+    .slice(0, 6);
 }
 
 /* Show the confirm sheet with raw text + tappable candidates */
