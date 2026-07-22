@@ -287,21 +287,40 @@ h1, h2, h3, h4, p, span, div, a, input {
 .cam-error p { color: var(--text2); font-size: clamp(13px,3.5vw,16px); line-height: 1.5; }
 .cam-error.show { display: flex; }
 
-.cam-back {
+/* ── Camera top bar: back left, torch/lens right ── */
+.cam-topbar {
   position: absolute;
-  top: calc(44px + var(--gap));
-  left: var(--pad);
-  width: clamp(34px,9vw,42px);
-  height: clamp(34px,9vw,42px);
-  background: rgba(0,0,0,0.55);
+  top: 0; left: 0; right: 0;
+  padding: calc(44px + var(--gap)) var(--pad) var(--gap);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10;
+  background: linear-gradient(rgba(0,0,0,0.5), transparent);
+  pointer-events: none;   /* let taps pass through to the video for focus */
+}
+.cam-topbar-right {
+  display: flex;
+  gap: clamp(8px,2.5vw,14px);
+}
+.cam-icon-btn {
+  width: clamp(38px,10vw,46px);
+  height: clamp(38px,10vw,46px);
+  background: rgba(0,0,0,0.5);
   border: none;
   border-radius: 50%;
-  color: #fff;
+  color: rgba(255,255,255,0.92);
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  z-index: 10;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
   -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;   /* buttons themselves stay clickable */
+  transition: background 0.15s, color 0.15s;
+}
+.cam-icon-btn:active { background: rgba(0,0,0,0.7); }
+.cam-icon-btn.active {
+  background: var(--green);
+  color: #fff;
 }
 
 .cam-controls {
@@ -360,21 +379,29 @@ h1, h2, h3, h4, p, span, div, a, input {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Zoom slider ── */
+/* ── Zoom slider — sits just above the shutter row ── */
 #cam-zoom-wrap {
   position: absolute;
-  bottom: calc(clamp(90px,20vh,150px));
+  bottom: calc(clamp(96px,21vh,155px));
   left: 50%;
   transform: translateX(-50%);
-  width: min(70vw, 320px);
+  width: min(72vw, 300px);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  background: rgba(0,0,0,0.4);
-  backdrop-filter: blur(8px);
+  gap: 12px;
+  padding: 9px 16px;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(10px);
   border-radius: 100px;
   z-index: 11;
+}
+.zoom-label {
+  font-size: clamp(11px,3vw,13px);
+  font-weight: 600;
+  color: var(--green);
+  min-width: 38px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 #cam-zoom {
   flex: 1;
@@ -400,35 +427,6 @@ h1, h2, h3, h4, p, span, div, a, input {
   border-radius: 50%;
   background: var(--green);
   cursor: pointer;
-}
-
-/* ── Side controls (torch / lens) ── */
-.cam-side-controls {
-  position: absolute;
-  right: var(--pad);
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  z-index: 11;
-}
-.cam-side-btn {
-  width: clamp(44px,11vw,52px);
-  height: clamp(44px,11vw,52px);
-  border-radius: 50%;
-  border: none;
-  background: rgba(0,0,0,0.45);
-  backdrop-filter: blur(8px);
-  color: rgba(255,255,255,0.9);
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s, color 0.15s;
-}
-.cam-side-btn.active {
-  background: var(--green);
-  color: #fff;
 }
 
 /* ── Tap-to-focus ring ── */
