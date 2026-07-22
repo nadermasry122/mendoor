@@ -223,13 +223,9 @@ h1, h2, h3, h4, p, span, div, a, input {
   pointer-events: none;
 }
 
-/* dark vignette mask around scan frame */
+/* No vignette — clear camera view */
 .cam-mask {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse 55% 45% at 50% 44%, transparent 90%, rgba(0,0,0,0.72) 100%);
-  pointer-events: none;
-  z-index: 1;
+  display: none;
 }
 
 .scan-frame {
