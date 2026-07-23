@@ -1166,3 +1166,143 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+/* ══════════════════════════════════════════════════
+   COMMUNITY SEARCH (Reddit)
+   Routed through the Cloudflare Worker because Reddit
+   blocks direct browser requests (CORS + User-Agent).
+══════════════════════════════════════════════════ */
+const REDDIT_ENDPOINT = '/api/reddit';
+
+/* Open the community screen and start the search */
+function openCommunity() {
+  document.getElementById('community-device-label').textContent = currentDevice;
+  goTo('s-community');
+  loadCommunity(currentDevice);
+}
+
+async function loadCommunity(device) {
+  const list  = document.getElementById('community-list');
+  const badge = document.getElementById('community-badge');
+  badge.style.display = 'none';
+
+  // Loading skeletons
+  let skel = '';
+  for (let i = 0; i < 4; i++) {
+    skel += `
+      <div class="skeleton-card">
+        <div class="skel-lines">
+          <div class="skel-line shimmer"></div>
+          <div class="skel-line short shimmer"></div>
+        </div>
+      </div>`;
+  }
+  list.innerHTML = skel;
+
+  try {
+    const posts = await searchCommunityWithFallback(device);
+
+    if (!posts || posts.length === 0) {
+      renderNoCommunity(device);
+      return;
+    }
+
+    badge.textContent = 'Reddit';
+    badge.style.display = 'block';
+    renderCommunity(posts);
+
+  } catch (err) {
+    renderCommunityError(device);
+  }
+}
+
+/* Same cascade idea as the iFixit search: specific → broad */
+async function searchCommunityWithFallback(device) {
+  const queries = buildQueryCascade(device);
+  for (const q of queries) {
+    const posts = await searchReddit(q);
+    if (posts && posts.length > 0) return posts;
+  }
+  return [];
+}
+
+async function searchReddit(query) {
+  const res = await fetch(`${REDDIT_ENDPOINT}?q=${encodeURIComponent(query)}`, {
+    headers: { 'Accept': 'application/json' }
+  });
+  if (!res.ok) throw new Error('API ' + res.status);
+  const data = await res.json();
+  return Array.isArray(data.posts) ? data.posts : [];
+}
+
+/* Render the post list */
+function renderCommunity(posts) {
+  const list = document.getElementById('community-list');
+  let html = '';
+
+  posts.forEach(p => {
+    const age = relativeTime(p.created);
+    const snippet = p.snippet
+      ? `<p class="post-snippet">${escapeHtml(p.snippet)}</p>`
+      : '';
+    const flair = p.flair
+      ? `<span class="guide-pill">${escapeHtml(p.flair)}</span>`
+      : '';
+
+    html += `
+      <div class="post-card" onclick="openSource('${escapeHtml(p.url)}')">
+        <div class="post-head">
+          <span class="post-sub">r/${escapeHtml(p.subreddit)}</span>
+          <span class="post-age">${age}</span>
+        </div>
+        <h3 class="post-title">${escapeHtml(p.title)}</h3>
+        ${snippet}
+        <div class="post-meta">
+          <span class="post-stat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            ${p.score}
+          </span>
+          <span class="post-stat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            ${p.comments}
+          </span>
+          ${flair}
+        </div>
+      </div>`;
+  });
+
+  list.innerHTML = html;
+}
+
+/* Human-readable age from a unix timestamp */
+function relativeTime(unixSeconds) {
+  if (!unixSeconds) return '';
+  const diff = Date.now() / 1000 - unixSeconds;
+  const day = 86400;
+  if (diff < day)        return 'heute';
+  if (diff < 2 * day)    return 'gestern';
+  if (diff < 30 * day)   return Math.floor(diff / day) + ' Tage';
+  if (diff < 365 * day)  return Math.floor(diff / (30 * day)) + ' Mon.';
+  const years = Math.floor(diff / (365 * day));
+  return years + (years === 1 ? ' Jahr' : ' Jahre');
+}
+
+function renderNoCommunity(device) {
+  document.getElementById('community-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">💬</div>
+      <h3>Keine Beiträge gefunden</h3>
+      <p>Zu „${escapeHtml(device)}" gibt es in den Reparatur-Communities noch keine passenden Diskussionen.</p>
+      <button onclick="window.open('https://www.reddit.com/search/?q=${encodeURIComponent(device + ' repair')}','_blank','noopener')">Auf Reddit suchen</button>
+    </div>`;
+}
+
+function renderCommunityError(device) {
+  document.getElementById('community-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">📡</div>
+      <h3>Verbindung fehlgeschlagen</h3>
+      <p>Die Community-Suche ist gerade nicht erreichbar. Prüfe deine Internetverbindung und versuche es erneut.</p>
+      <button onclick="loadCommunity(currentDevice)">Erneut versuchen</button>
+    </div>`;
+}

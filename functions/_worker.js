@@ -30,10 +30,97 @@ export default {
       return handleVision(request, env);
     }
 
+    // ── Reddit community search ──
+    if (url.pathname === '/api/reddit') {
+      return handleReddit(request);
+    }
+
     // ── Everything else → static files (index.html, styles.css, app.js) ──
     return env.ASSETS.fetch(request);
   }
 };
+
+/* ══════════════════════════════════════════════
+   /api/reddit – searches repair-related subreddits.
+   Reddit blocks direct browser calls (CORS + UA),
+   so the Worker acts as proxy.
+   Query:  /api/reddit?q=iPhone+14+Pro
+   ══════════════════════════════════════════════ */
+
+// Subreddits worth searching for repair/reuse topics
+const REPAIR_SUBS = [
+  'fixit',
+  'repair',
+  'electronics',
+  'techsupport',
+  'mobilerepair',
+  'laptops',
+  'AskElectronics',
+  'ifixit',
+  'buildapc',
+  'homelab',
+  'de_EDV'
+].join('+');
+
+async function handleReddit(request) {
+  const url = new URL(request.url);
+  const q = (url.searchParams.get('q') || '').trim();
+
+  if (!q) {
+    return json({ error: 'Missing query parameter "q"' }, 400);
+  }
+
+  // Reddit's public search endpoint, restricted to the repair subreddits
+  const redditUrl =
+    `https://www.reddit.com/r/${REPAIR_SUBS}/search.json` +
+    `?q=${encodeURIComponent(q)}` +
+    `&restrict_sr=1&sort=relevance&t=all&limit=25&raw_json=1`;
+
+  let resp;
+  try {
+    resp = await fetch(redditUrl, {
+      headers: {
+        // Reddit rejects requests without a descriptive User-Agent
+        'User-Agent': 'web:mendooR:v1.0 (educational e-waste repair project)',
+        'Accept': 'application/json'
+      }
+    });
+  } catch (err) {
+    return json({ error: 'Reddit unreachable', detail: err.message }, 502);
+  }
+
+  if (!resp.ok) {
+    return json({ error: `Reddit error ${resp.status}` }, resp.status);
+  }
+
+  const data = await resp.json().catch(() => null);
+  const children = data?.data?.children;
+  if (!Array.isArray(children)) {
+    return json({ error: 'Unexpected Reddit response' }, 502);
+  }
+
+  // Reduce to what the UI actually needs
+  const posts = children
+    .map(c => c.data)
+    .filter(p => p && !p.over_18 && !p.stickied)
+    .map(p => ({
+      id:        p.id,
+      title:     p.title || '',
+      subreddit: p.subreddit || '',
+      score:     p.score ?? 0,
+      comments:  p.num_comments ?? 0,
+      created:   p.created_utc ?? 0,
+      url:       'https://www.reddit.com' + (p.permalink || ''),
+      snippet:   (p.selftext || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+      flair:     p.link_flair_text || null,
+      thumb:     (p.thumbnail && p.thumbnail.startsWith('http')) ? p.thumbnail : null
+    }))
+    // Community-verified answers first: score, then discussion volume
+    .sort((a, b) => (b.score - a.score) || (b.comments - a.comments))
+    .slice(0, 15);
+
+  return json({ query: q, count: posts.length, posts });
+}
 
 /* ══════════════════════════════════════════════
    /api/vision – proxies a Base64 image to Google

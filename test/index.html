@@ -323,6 +323,14 @@
           </div>
           <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </div>
+        <div class="menu-item" onclick="openCommunity()">
+          <div class="menu-icon-box" style="background:#3a1a0e;">💬</div>
+          <div class="menu-text">
+            <h4>Community &amp; Foren</h4>
+            <p>Erfahrungen und Lösungen aus Reddit</p>
+          </div>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
         <div class="menu-item" onclick="showToast('Recyclinghöfe in der Nähe – coming soon')">
           <div class="menu-icon-box" style="background:#2a2210;">♻️</div>
           <div class="menu-text">
@@ -404,6 +412,24 @@
     </div>
 
     <div class="guides-scroll" id="guides-list">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <!-- ══════════ SCREEN 6: COMMUNITY (REDDIT) ══════════ -->
+  <div id="s-community" class="screen">
+    <div class="sub-header">
+      <button class="back-btn" onclick="goTo('s-result')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="sub-header-text">
+        <h1>Community</h1>
+        <p id="community-device-label">Gerät</p>
+      </div>
+      <span class="lang-badge" id="community-badge" style="display:none;">Reddit</span>
+    </div>
+
+    <div class="guides-scroll" id="community-list">
       <!-- populated by JS -->
     </div>
   </div>
