@@ -116,7 +116,10 @@ function setupCameraCapabilities() {
     slider.step  = caps.zoom.step || 0.1;
     let settings = {};
     try { settings = videoTrack.getSettings(); } catch {}
-    slider.value = settings.zoom || caps.zoom.min;
+    const current = settings.zoom || caps.zoom.min;
+    slider.value = current;
+    const label = document.getElementById('zoom-label');
+    if (label) label.textContent = parseFloat(current).toFixed(1) + '×';
     zoomWrap.style.display = 'flex';
   }
 
@@ -135,6 +138,8 @@ function setupCameraCapabilities() {
 
 /* Zoom — called by the slider */
 function setZoom(value) {
+  const label = document.getElementById('zoom-label');
+  if (label) label.textContent = parseFloat(value).toFixed(1) + '×';
   if (!videoTrack) return;
   try {
     videoTrack.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] });
@@ -270,8 +275,9 @@ async function triggerScan() {
   const canvas = document.getElementById('capture-canvas');
   const ctx    = canvas.getContext('2d');
 
-  // ── 1. Multi-frame capture: take 3 frames 400ms apart, pick sharpest ──
-  statusEl.textContent = 'Schärfster Frame wird gewählt …';
+  // ── 1. Quick dual-frame capture: 2 frames 120ms apart, pick sharper ──
+  // Cloud Vision is robust, so we don't need Tesseract's heavy 3-frame averaging.
+  statusEl.textContent = 'Aufnahme …';
   progEl.textContent = '';
 
   async function captureFrame() {
@@ -286,9 +292,9 @@ async function triggerScan() {
   }
 
   const frames = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     frames.push(await captureFrame());
-    if (i < 2) await delay(400);
+    if (i < 1) await delay(120);
   }
   const best = frames.reduce((a, b) => b.sharpness > a.sharpness ? b : a);
   ctx.putImageData(best.img, 0, 0);
@@ -349,9 +355,17 @@ async function triggerScan() {
       ocrCandidates = [];
       showOcrSheet(null, []);
     } else {
-      const confidentText = filterWords(words, 70, fullText);
-      ocrCandidates = extractCandidates(confidentText);
-      showOcrSheet(confidentText, ocrCandidates);
+      // Vision's fullText keeps line breaks, which the type-plate
+      // classifier needs — so filter on that rather than flattened words.
+      const plateText = filterToTypePlate(fullText);
+      ocrCandidates = extractCandidates(fullText);
+
+      if (!plateText && ocrCandidates.length === 0) {
+        // Text was found, but nothing on it looks like a type plate
+        showOcrSheet('', []);
+      } else {
+        showOcrSheet(plateText || fullText, ocrCandidates);
+      }
     }
 
   } catch (err) {
@@ -472,8 +486,11 @@ function filterWords(words, minConf, fullText) {
 function laplacianVariance(imgData, w) {
   const d = imgData.data, h = imgData.height;
   let sum = 0, sum2 = 0, n = 0;
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
+  // Subsample every 2nd pixel — sharpness is a large-scale property,
+  // so this stays accurate while cutting work by ~75% (faster shutter on mobile).
+  const STEP = 2;
+  for (let y = 1; y < h - 1; y += STEP) {
+    for (let x = 1; x < w - 1; x += STEP) {
       const idx = (y * w + x) * 4;
       const gray = 0.299*d[idx] + 0.587*d[idx+1] + 0.114*d[idx+2];
       const lap =
@@ -568,62 +585,179 @@ function filterByConfidence(data, minConf) {
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-/* Pull likely device identifiers out of raw OCR text */
+/* ══════════════════════════════════════════════════
+   TYPE-PLATE CLASSIFIER
+   Cloud Vision returns every piece of text it sees —
+   including packaging prose, manuals and marketing.
+   These helpers keep only what looks like a rating
+   plate / model label and drop flowing text.
+══════════════════════════════════════════════════ */
+
+// Common function words. A line full of these is prose, not a type plate.
+const STOPWORDS = new Set([
+  // English
+  'the','a','an','and','or','of','to','in','on','for','with','from','by','at','as',
+  'is','are','was','were','be','been','this','that','these','those','it','its','you',
+  'your','we','our','they','their','can','will','may','should','must','not','no',
+  'all','any','more','than','when','if','how','what','which','please','use','using',
+  // German
+  'der','die','das','den','dem','des','ein','eine','einen','einem','einer','und','oder',
+  'von','zu','im','in','auf','für','mit','aus','bei','nach','über','unter','ist','sind',
+  'war','waren','wird','werden','kann','können','soll','sollen','muss','müssen','nicht',
+  'alle','mehr','als','wenn','wie','was','welche','bitte','sie','ihr','ihre','diese','dieser'
+]);
+
+// Labels that strongly indicate a rating plate
+const PLATE_LABELS = /\b(model|modell|type|typ|p\/?n|part\s*(no|number)|s\/?n|serial|seriennummer|art\.?-?nr|ref|imei|fcc\s*id|ic\s*:|mtm|sku|ean|upc)\b/i;
+
+// Electrical / regulatory markings typical for rating plates
+const PLATE_SPECS = /\b(\d+([.,]\d+)?\s*(v|va|w|kw|a|ma|mah|wh|hz|khz|ghz|db|kg|g|ml|l)\b|~|⎓|dc|ac|rohs|weee|ce\b|ul\b|class\s*[ivx]+)\b/i;
+
+const KNOWN_BRANDS = ['apple','iphone','ipad','macbook','imac','samsung','galaxy','sony','lg',
+  'philips','bosch','siemens','miele','aeg','panasonic','toshiba','sharp','hp','dell','lenovo',
+  'thinkpad','asus','acer','msi','huawei','xiaomi','redmi','poco','oneplus','oppo','vivo','realme',
+  'honor','motorola','nokia','google','pixel','microsoft','surface','xbox','playstation','nintendo',
+  'canon','nikon','fujifilm','gopro','bose','jbl','sennheiser','logitech','razer','anker','fairphone',
+  'kindle','amazon','dyson','braun','krups','delonghi','tefal','severin','medion','grundig','beko'];
+
+/*
+ * Decide whether a line reads like prose (a sentence) rather than
+ * plate data. Prose lines are dropped before candidate extraction.
+ */
+function isProseLine(line) {
+  const words = line.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 5) return false;                  // short lines are plate-like
+
+  // Ratio of stopwords — prose is full of them
+  const stopCount = words.filter(w =>
+    STOPWORDS.has(w.toLowerCase().replace(/[^a-zäöüß]/gi, ''))
+  ).length;
+  const stopRatio = stopCount / words.length;
+
+  // Sentence punctuation is a prose signal
+  const endsLikeSentence = /[.!?]\s*$/.test(line.trim());
+
+  // Plate lines are digit-rich; prose is not
+  const digitRatio = (line.match(/\d/g) || []).length / line.length;
+
+  if (stopRatio >= 0.28) return true;                  // clearly a sentence
+  if (words.length > 9 && digitRatio < 0.06) return true; // long and no numbers
+  if (endsLikeSentence && stopRatio >= 0.18) return true;
+
+  return false;
+}
+
+/*
+ * Score how strongly a line looks like rating-plate content.
+ * 0 = not plate-like, higher = more plate-like.
+ */
+function typePlateScore(line) {
+  if (!line || !line.trim()) return 0;
+  const trimmed = line.trim();
+  const lower = trimmed.toLowerCase();
+  let score = 0;
+
+  if (PLATE_LABELS.test(trimmed)) score += 4;                          // "Model:", "S/N", "FCC ID"
+  if (KNOWN_BRANDS.some(b => lower.includes(b))) score += 3;           // brand mention
+  if (PLATE_SPECS.test(trimmed)) score += 2;                           // 5V / 2.4A / 50Hz
+  if (/\b[A-Z0-9][A-Z0-9\-\/]{3,}\b/.test(trimmed)) score += 2;        // code-like token
+  if (/^[A-Z0-9\s\-\/.:]+$/.test(trimmed) && trimmed.length <= 30) score += 1; // short ALL-CAPS
+
+  const digitRatio = (trimmed.match(/\d/g) || []).length / trimmed.length;
+  if (digitRatio > 0.15) score += 1;
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length <= 5) score += 1;                                   // plates are terse
+
+  return score;
+}
+
+/*
+ * Reduce raw OCR text to the lines that plausibly come from a type plate.
+ * Returns a cleaned multi-line string.
+ */
+function filterToTypePlate(text) {
+  if (!text) return '';
+  const lines = text.split(/\n+/)
+    .map(l => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const kept = lines
+    .filter(l => !isProseLine(l))
+    .map(l => ({ line: l, score: typePlateScore(l) }))
+    .filter(o => o.score >= 2)                 // must show at least some plate signal
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12)                              // cap so the UI stays readable
+    .map(o => o.line);
+
+  return kept.join('\n');
+}
+
+/* Pull likely device identifiers out of type-plate text */
 function extractCandidates(text) {
   if (!text) return [];
-  const brands = ['iphone','ipad','macbook','imac','galaxy','redmi','pixel','thinkpad','surface',
-    'oneplus','huawei','xiaomi','motorola','nokia','playstation','xbox','nintendo','gopro',
-    'kindle','fairphone','poco','realme','honor'];
-  // Lines that are pure marketing/safety noise — only skipped if no model token is present
-  const noise = /designed by|california|made in|caution|do not open|user serviceable|warning|assembled in|this device complies/i;
 
-  const lines = text.split(/\n+/).map(l => l.replace(/\s+/g,' ').trim()).filter(Boolean);
+  // Work only on plate-like lines
+  const plateText = filterToTypePlate(text);
+  if (!plateText) return [];
+
+  const lines = plateText.split(/\n+/).map(l => l.trim()).filter(Boolean);
   const scored = [];
 
   const push = (t, s) => {
-    let v = (t || '').trim().replace(/[.,;:]+$/,'');   // strip trailing punctuation
-    if (v && v.length >= 2 && v.length <= 40) scored.push({ text: v, score: s });
+    let v = (t || '').trim().replace(/^[:\-#.\s]+|[.,;:\-\s]+$/g, '');
+    // Reject pure noise tokens and things that are obviously not models
+    if (!v || v.length < 3 || v.length > 40) return;
+    if (/^\d{1,2}$/.test(v)) return;                        // lone small numbers
+    if (STOPWORDS.has(v.toLowerCase())) return;
+    scored.push({ text: v, score: s });
   };
 
-  // Model-number patterns (run on the ORIGINAL line, case-sensitive where it helps)
-  const modelPatterns = [
-    /\bModel(?:\s*(?:No|Nr|Number|Name))?\.?\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{2,28})/i, // "Model: A2890", "Model No. SM-G991B"
-    /\bA\d{4}\b/g,                       // Apple style: A2890
-    /\b[A-Z]{2}-?[A-Z]?\d{3,5}[A-Z]{0,4}\b/g,   // SM-G991B, GA01234
-    /\b\d{2}[A-Z]{2}\d{3,5}[A-Z]{0,3}\b/g,      // Lenovo 20XW0041
-    /\b[A-Z]{1,4}\d{3,6}[A-Z]{0,3}\b/g,         // generic XYZ1234
-    /\bMTM[:\s]*([A-Z0-9\-]{4,20})/i            // Lenovo MTM
+  // Model-number patterns, most specific first
+  const patterns = [
+    { re: /\b(?:model|modell|typ|type)\s*(?:no|nr|number|name)?\.?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i, cap: 1, score: 6 },
+    { re: /\b(?:p\/?n|part\s*(?:no|number))\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i, cap: 1, score: 5 },
+    { re: /\bMTM\s*[:#]?\s*([A-Z0-9\-]{4,20})/i, cap: 1, score: 5 },
+    { re: /\bA\d{4}\b/g, score: 4 },                            // Apple: A2890
+    { re: /\b[A-Z]{2}-?[A-Z]?\d{3,5}[A-Z]{0,4}\b/g, score: 4 }, // SM-G991B
+    { re: /\b\d{2}[A-Z]{2}\d{3,5}[A-Z]{0,3}\b/g, score: 3 },    // Lenovo 20XW0041
+    { re: /\b[A-Z]{2,5}\d{3,6}[A-Z]{0,3}\b/g, score: 3 }        // generic WW90T554
   ];
 
   lines.forEach(line => {
     const lower = line.toLowerCase();
-    const isNoise = noise.test(line);
 
-    // 1) Brand/product family line (iPhone 14 Pro, Galaxy S21) — strongest
-    if (!isNoise && brands.some(b => lower.includes(b))) push(line, 4);
-
-    // 2) Explicit "Model: ..." label — very strong
-    const labelMatch = line.match(modelPatterns[0]);
-    if (labelMatch && labelMatch[1]) push(labelMatch[1], 3);
-
-    // 3) Model-number tokens anywhere in the line (works even on "noise" lines)
-    for (let i = 1; i < modelPatterns.length; i++) {
-      const m = line.match(modelPatterns[i]);
-      if (m) {
-        // global patterns return array of matches; labelled ones return capture groups
-        if (modelPatterns[i].global) m.forEach(tok => push(tok, 2));
-        else if (m[1]) push(m[1], 2);
-      }
+    // Brand + product-family line is the most useful search term
+    const brandHit = KNOWN_BRANDS.find(b => lower.includes(b));
+    if (brandHit) {
+      // Keep the line if it's short enough to be a product name
+      const words = line.split(/\s+/).filter(Boolean);
+      if (words.length <= 6) push(line, 7);
+      else push(brandHit, 4);
     }
+
+    patterns.forEach(({ re, cap, score }) => {
+      if (re.global) {
+        const all = line.match(re);
+        if (all) all.forEach(tok => push(tok, score));
+      } else {
+        const m = line.match(re);
+        if (m && m[cap]) push(m[cap], score);
+      }
+    });
   });
 
-  // De-dup keeping highest score, then sort by score desc
+  // De-dup keeping highest score, then sort
   const map = new Map();
-  scored.forEach(({text, score}) => {
+  scored.forEach(({ text, score }) => {
     const key = text.toLowerCase();
     if (!map.has(key) || map.get(key).score < score) map.set(key, { text, score });
   });
-  return Array.from(map.values()).sort((a,b) => b.score - a.score).map(o => o.text).slice(0, 8);
+
+  return Array.from(map.values())
+    .sort((a, b) => b.score - a.score)
+    .map(o => o.text)
+    .slice(0, 6);
 }
 
 /* Show the confirm sheet with raw text + tappable candidates */
@@ -1031,4 +1165,144 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/* ══════════════════════════════════════════════════
+   COMMUNITY SEARCH (Reddit)
+   Routed through the Cloudflare Worker because Reddit
+   blocks direct browser requests (CORS + User-Agent).
+══════════════════════════════════════════════════ */
+const REDDIT_ENDPOINT = '/api/reddit';
+
+/* Open the community screen and start the search */
+function openCommunity() {
+  document.getElementById('community-device-label').textContent = currentDevice;
+  goTo('s-community');
+  loadCommunity(currentDevice);
+}
+
+async function loadCommunity(device) {
+  const list  = document.getElementById('community-list');
+  const badge = document.getElementById('community-badge');
+  badge.style.display = 'none';
+
+  // Loading skeletons
+  let skel = '';
+  for (let i = 0; i < 4; i++) {
+    skel += `
+      <div class="skeleton-card">
+        <div class="skel-lines">
+          <div class="skel-line shimmer"></div>
+          <div class="skel-line short shimmer"></div>
+        </div>
+      </div>`;
+  }
+  list.innerHTML = skel;
+
+  try {
+    const posts = await searchCommunityWithFallback(device);
+
+    if (!posts || posts.length === 0) {
+      renderNoCommunity(device);
+      return;
+    }
+
+    badge.textContent = 'Reddit';
+    badge.style.display = 'block';
+    renderCommunity(posts);
+
+  } catch (err) {
+    renderCommunityError(device);
+  }
+}
+
+/* Same cascade idea as the iFixit search: specific → broad */
+async function searchCommunityWithFallback(device) {
+  const queries = buildQueryCascade(device);
+  for (const q of queries) {
+    const posts = await searchReddit(q);
+    if (posts && posts.length > 0) return posts;
+  }
+  return [];
+}
+
+async function searchReddit(query) {
+  const res = await fetch(`${REDDIT_ENDPOINT}?q=${encodeURIComponent(query)}`, {
+    headers: { 'Accept': 'application/json' }
+  });
+  if (!res.ok) throw new Error('API ' + res.status);
+  const data = await res.json();
+  return Array.isArray(data.posts) ? data.posts : [];
+}
+
+/* Render the post list */
+function renderCommunity(posts) {
+  const list = document.getElementById('community-list');
+  let html = '';
+
+  posts.forEach(p => {
+    const age = relativeTime(p.created);
+    const snippet = p.snippet
+      ? `<p class="post-snippet">${escapeHtml(p.snippet)}</p>`
+      : '';
+    const flair = p.flair
+      ? `<span class="guide-pill">${escapeHtml(p.flair)}</span>`
+      : '';
+
+    html += `
+      <div class="post-card" onclick="openSource('${escapeHtml(p.url)}')">
+        <div class="post-head">
+          <span class="post-sub">r/${escapeHtml(p.subreddit)}</span>
+          <span class="post-age">${age}</span>
+        </div>
+        <h3 class="post-title">${escapeHtml(p.title)}</h3>
+        ${snippet}
+        <div class="post-meta">
+          <span class="post-stat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            ${p.score}
+          </span>
+          <span class="post-stat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            ${p.comments}
+          </span>
+          ${flair}
+        </div>
+      </div>`;
+  });
+
+  list.innerHTML = html;
+}
+
+/* Human-readable age from a unix timestamp */
+function relativeTime(unixSeconds) {
+  if (!unixSeconds) return '';
+  const diff = Date.now() / 1000 - unixSeconds;
+  const day = 86400;
+  if (diff < day)        return 'heute';
+  if (diff < 2 * day)    return 'gestern';
+  if (diff < 30 * day)   return Math.floor(diff / day) + ' Tage';
+  if (diff < 365 * day)  return Math.floor(diff / (30 * day)) + ' Mon.';
+  const years = Math.floor(diff / (365 * day));
+  return years + (years === 1 ? ' Jahr' : ' Jahre');
+}
+
+function renderNoCommunity(device) {
+  document.getElementById('community-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">💬</div>
+      <h3>Keine Beiträge gefunden</h3>
+      <p>Zu „${escapeHtml(device)}" gibt es in den Reparatur-Communities noch keine passenden Diskussionen.</p>
+      <button onclick="window.open('https://www.reddit.com/search/?q=${encodeURIComponent(device + ' repair')}','_blank','noopener')">Auf Reddit suchen</button>
+    </div>`;
+}
+
+function renderCommunityError(device) {
+  document.getElementById('community-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">📡</div>
+      <h3>Verbindung fehlgeschlagen</h3>
+      <p>Die Community-Suche ist gerade nicht erreichbar. Prüfe deine Internetverbindung und versuche es erneut.</p>
+      <button onclick="loadCommunity(currentDevice)">Erneut versuchen</button>
+    </div>`;
 }
