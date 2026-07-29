@@ -833,6 +833,7 @@ function setProduct(name) {
   const modelEl = document.getElementById('product-model');
   if (titleEl) titleEl.textContent = name;
   if (modelEl) modelEl.textContent = 'Erkannt via OCR-Scan';
+  renderCommunityCard();
 }
 
 /* ── Recent scans ── */
@@ -1168,141 +1169,63 @@ function escapeHtml(str) {
 }
 
 /* ══════════════════════════════════════════════════
-   COMMUNITY SEARCH (Reddit)
-   Routed through the Cloudflare Worker because Reddit
-   blocks direct browser requests (CORS + User-Agent).
+   COMMUNITY CARD (Reddit — link-out, no API call)
+
+   Reddit closed self-service API registration in 2026
+   under its "Responsible Builder Policy" (source:
+   support.reddithelp.com/hc/en-us/articles/42728983564564).
+   Server-side requests without an approved OAuth token
+   are rejected outright — including from Cloudflare
+   Workers, which run in datacenter IP ranges Reddit
+   filters regardless of code correctness.
+
+   Rather than embed Reddit content we don't have
+   reliable access to, the card below is generated
+   entirely client-side from data we already have (the
+   scanned device name + our own curated subreddit list)
+   and opens a prepared Reddit search in a new tab.
+   This keeps the app fast, dependency-free, and honest
+   about where the user is headed.
 ══════════════════════════════════════════════════ */
-const REDDIT_ENDPOINT = '/api/reddit';
 
-/* Open the community screen and start the search */
+// Same repair-focused subreddits the app would have searched via API —
+// shown to the user so the destination is transparent before they leave the app.
+const COMMUNITY_SUBS = ['fixit', 'repair', 'mobilerepair', 'electronics', 'techsupport'];
+
+/* Populate and reveal the community card on the result screen */
+function renderCommunityCard() {
+  const sub  = document.getElementById('community-card-sub');
+  const desc = document.getElementById('community-card-desc');
+  const pills = document.getElementById('community-card-subs');
+  const menuSub = document.getElementById('community-menu-sub');
+
+  if (sub)  sub.textContent = `Reddit-Suche zu ${currentDevice}`;
+  if (desc) desc.innerHTML = `Durchsuche Reparatur-Communities nach Erfahrungsberichten zu <b>${escapeHtml(currentDevice)}</b>. Öffnet in einem neuen Tab.`;
+  if (menuSub) menuSub.textContent = 'Öffnet Reddit-Suche im Browser';
+
+  if (pills) {
+    pills.innerHTML = COMMUNITY_SUBS.map(s => `<span class="cc-sub-pill">r/${s}</span>`).join('');
+  }
+}
+
+/*
+  Build a search query from the device name and open Reddit in a new tab.
+
+  Uses the SECOND cascade tier (brand + product line), not the full exact
+  string. The full string (e.g. "Bosch Serie 6 WAT28401") is too narrow —
+  almost no forum post contains that exact model suffix verbatim, so a
+  search for it returns few or zero hits. "Bosch Serie" is specific enough
+  to stay relevant while matching how people actually write about their
+  device in a casual post. Falls back to the only available term for
+  single-token inputs like a bare model code ("SM-A115A1L").
+*/
 function openCommunity() {
-  document.getElementById('community-device-label').textContent = currentDevice;
-  goTo('s-community');
-  loadCommunity(currentDevice);
+  const cascade = buildQueryCascade(currentDevice);
+  const term = cascade.length > 1 ? cascade[1] : cascade[0];
+  const query = term + ' repair';
+  const url = `https://www.reddit.com/search/?q=${encodeURIComponent(query)}`;
+  window.open(url, '_blank', 'noopener');
 }
 
-async function loadCommunity(device) {
-  const list  = document.getElementById('community-list');
-  const badge = document.getElementById('community-badge');
-  badge.style.display = 'none';
-
-  // Loading skeletons
-  let skel = '';
-  for (let i = 0; i < 4; i++) {
-    skel += `
-      <div class="skeleton-card">
-        <div class="skel-lines">
-          <div class="skel-line shimmer"></div>
-          <div class="skel-line short shimmer"></div>
-        </div>
-      </div>`;
-  }
-  list.innerHTML = skel;
-
-  try {
-    const posts = await searchCommunityWithFallback(device);
-
-    if (!posts || posts.length === 0) {
-      renderNoCommunity(device);
-      return;
-    }
-
-    badge.textContent = 'Reddit';
-    badge.style.display = 'block';
-    renderCommunity(posts);
-
-  } catch (err) {
-    renderCommunityError(device);
-  }
-}
-
-/* Same cascade idea as the iFixit search: specific → broad */
-async function searchCommunityWithFallback(device) {
-  const queries = buildQueryCascade(device);
-  for (const q of queries) {
-    const posts = await searchReddit(q);
-    if (posts && posts.length > 0) return posts;
-  }
-  return [];
-}
-
-async function searchReddit(query) {
-  const res = await fetch(`${REDDIT_ENDPOINT}?q=${encodeURIComponent(query)}`, {
-    headers: { 'Accept': 'application/json' }
-  });
-  if (!res.ok) throw new Error('API ' + res.status);
-  const data = await res.json();
-  return Array.isArray(data.posts) ? data.posts : [];
-}
-
-/* Render the post list */
-function renderCommunity(posts) {
-  const list = document.getElementById('community-list');
-  let html = '';
-
-  posts.forEach(p => {
-    const age = relativeTime(p.created);
-    const snippet = p.snippet
-      ? `<p class="post-snippet">${escapeHtml(p.snippet)}</p>`
-      : '';
-    const flair = p.flair
-      ? `<span class="guide-pill">${escapeHtml(p.flair)}</span>`
-      : '';
-
-    html += `
-      <div class="post-card" onclick="openSource('${escapeHtml(p.url)}')">
-        <div class="post-head">
-          <span class="post-sub">r/${escapeHtml(p.subreddit)}</span>
-          <span class="post-age">${age}</span>
-        </div>
-        <h3 class="post-title">${escapeHtml(p.title)}</h3>
-        ${snippet}
-        <div class="post-meta">
-          <span class="post-stat">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-            ${p.score}
-          </span>
-          <span class="post-stat">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            ${p.comments}
-          </span>
-          ${flair}
-        </div>
-      </div>`;
-  });
-
-  list.innerHTML = html;
-}
-
-/* Human-readable age from a unix timestamp */
-function relativeTime(unixSeconds) {
-  if (!unixSeconds) return '';
-  const diff = Date.now() / 1000 - unixSeconds;
-  const day = 86400;
-  if (diff < day)        return 'heute';
-  if (diff < 2 * day)    return 'gestern';
-  if (diff < 30 * day)   return Math.floor(diff / day) + ' Tage';
-  if (diff < 365 * day)  return Math.floor(diff / (30 * day)) + ' Mon.';
-  const years = Math.floor(diff / (365 * day));
-  return years + (years === 1 ? ' Jahr' : ' Jahre');
-}
-
-function renderNoCommunity(device) {
-  document.getElementById('community-list').innerHTML = `
-    <div class="state-box">
-      <div class="ico">💬</div>
-      <h3>Keine Beiträge gefunden</h3>
-      <p>Zu „${escapeHtml(device)}" gibt es in den Reparatur-Communities noch keine passenden Diskussionen.</p>
-      <button onclick="window.open('https://www.reddit.com/search/?q=${encodeURIComponent(device + ' repair')}','_blank','noopener')">Auf Reddit suchen</button>
-    </div>`;
-}
-
-function renderCommunityError(device) {
-  document.getElementById('community-list').innerHTML = `
-    <div class="state-box">
-      <div class="ico">📡</div>
-      <h3>Verbindung fehlgeschlagen</h3>
-      <p>Die Community-Suche ist gerade nicht erreichbar. Prüfe deine Internetverbindung und versuche es erneut.</p>
-      <button onclick="loadCommunity(currentDevice)">Erneut versuchen</button>
-    </div>`;
-}
+/* Render once on load so the demo device already has a filled-in card */
+renderCommunityCard();
