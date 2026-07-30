@@ -644,14 +644,46 @@ const KNOWN_BRANDS = ['apple','iphone','ipad','macbook','imac','samsung','galaxy
   'thinkpad','asus','acer','msi','huawei','xiaomi','redmi','poco','oneplus','oppo','vivo','realme',
   'honor','motorola','nokia','google','pixel','microsoft','surface','xbox','playstation','nintendo',
   'canon','nikon','fujifilm','gopro','bose','jbl','sennheiser','logitech','razer','anker','fairphone',
-  'kindle','amazon','dyson','braun','krups','delonghi','tefal','severin','medion','grundig','beko'];
+  'kindle','amazon','dyson','braun','krups','delonghi','tefal','severin','medion','grundig','beko',
+  // Common laptop/device product lines — these often appear on a type plate
+  // WITHOUT the parent brand name on the same OCR line (e.g. "Latitude 7421"
+  // printed alone), and don't match the all-caps model-code regex patterns
+  // below since they mix a titlecase word with a spaced-out number.
+  'latitude','xps','inspiron','precision','vostro','elitebook','pavilion','envy','spectre','omen',
+  'ideapad','legion','yoga','zenbook','vivobook','rog','tuf','predator','aspire','nitro','swift',
+  'vaio','satellite','portege','probook','chromebook'];
+
+/*
+ * Detects scripts that don't delimit words with spaces (Chinese,
+ * Japanese kana, Korean Hangul, Thai). This matters because
+ * isProseLine() below counts "words" by splitting on whitespace —
+ * for these scripts a full sentence has zero spaces and would
+ * otherwise collapse into what looks like "1 word", silently
+ * bypassing the prose filter and defeating worldwide usability.
+ */
+function hasNoSpaceScript(text) {
+  return /[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF\u0E00-\u0E7F]/.test(text);
+}
 
 /*
  * Decide whether a line reads like prose (a sentence) rather than
  * plate data. Prose lines are dropped before candidate extraction.
  */
 function isProseLine(line) {
-  const words = line.trim().split(/\s+/).filter(Boolean);
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+
+  // Scripts without space-delimited words need a different measure —
+  // whitespace word-counting is meaningless here (see hasNoSpaceScript
+  // above). Character length + digit ratio serves the same purpose:
+  // a long run of non-Latin characters with almost no digits reads as
+  // descriptive prose, not a rating plate, regardless of language.
+  if (hasNoSpaceScript(trimmed)) {
+    const digitRatio = (trimmed.match(/\d/g) || []).length / trimmed.length;
+    return trimmed.length > 12 && digitRatio < 0.06;
+  }
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length < 5) return false;                  // short lines are plate-like
 
   // Ratio of stopwords — prose is full of them
@@ -661,10 +693,10 @@ function isProseLine(line) {
   const stopRatio = stopCount / words.length;
 
   // Sentence punctuation is a prose signal
-  const endsLikeSentence = /[.!?]\s*$/.test(line.trim());
+  const endsLikeSentence = /[.!?]\s*$/.test(trimmed);
 
   // Plate lines are digit-rich; prose is not
-  const digitRatio = (line.match(/\d/g) || []).length / line.length;
+  const digitRatio = (trimmed.match(/\d/g) || []).length / trimmed.length;
 
   if (stopRatio >= 0.28) return true;                  // clearly a sentence
   if (words.length > 9 && digitRatio < 0.06) return true; // long and no numbers
@@ -747,7 +779,17 @@ function extractCandidates(text) {
     { re: /\bA\d{4}\b/g, score: 4 },                            // Apple: A2890
     { re: /\b[A-Z]{2}-?[A-Z]?\d{3,5}[A-Z]{0,4}\b/g, score: 4 }, // SM-G991B
     { re: /\b\d{2}[A-Z]{2}\d{3,5}[A-Z]{0,3}\b/g, score: 3 },    // Lenovo 20XW0041
-    { re: /\b[A-Z]{2,5}\d{3,6}[A-Z]{0,3}\b/g, score: 3 }        // generic WW90T554
+    { re: /\b[A-Z]{2,5}\d{3,6}[A-Z]{0,3}\b/g, score: 3 },       // generic WW90T554
+    /*
+      Generic "ProductName ####" convention — catches lines like "Latitude
+      7421", "Pavilion 15", "Aspire 5" even when the specific product line
+      isn't (and can never completely be) in KNOWN_BRANDS, and when the
+      all-caps patterns above don't match because a titlecase word is
+      separated from its number by a space. This is what makes model
+      recognition work for brands we haven't explicitly listed — the actual
+      requirement for a scanner meant to work worldwide, on any device.
+    */
+    { re: /\b([A-Z][a-zA-Z]{2,15}(?:\s+[A-Z][a-zA-Z]{2,15})?\s+[A-Z]?\d{1,5}[A-Z]{0,3})\b/, cap: 1, score: 5 }
   ];
 
   lines.forEach(line => {

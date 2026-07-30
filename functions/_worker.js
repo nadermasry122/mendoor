@@ -98,14 +98,15 @@ async function handleVision(request, env) {
       image: { content: image },
       features: [
         { type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 }
-      ],
-      // Hint: languages we expect on type plates
-      // Language hints improve accuracy but don't restrict detection —
-      // Vision can still read other languages without a hint. 'zh' added
-      // because manufacturer type plates sometimes carry Chinese compliance
-      // markings (e.g. CCC certification) alongside the Latin-script model
-      // data; this doesn't hurt Latin-script recognition.
-      imageContext: { languageHints: ['en', 'de', 'zh'] }
+      ]
+      // No languageHints — Google's own documentation is explicit that an
+      // empty value gives the BEST results, since it enables full automatic
+      // language detection. DOCUMENT_TEXT_DETECTION (used here) auto-detects
+      // the complete set of supported languages on its own; a hardcoded
+      // hint list would only narrow that down and risk actively hurting
+      // detection for any device outside the listed languages — the
+      // opposite of what a worldwide-usable scanner needs.
+      // Source: docs.cloud.google.com/vision/docs/ocr
     }]
   };
 
