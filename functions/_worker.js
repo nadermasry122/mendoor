@@ -30,6 +30,11 @@ export default {
       return handleVision(request, env);
     }
 
+    // ── Internet Archive manual/documentation search ──
+    if (url.pathname === '/api/archive') {
+      return handleArchive(request);
+    }
+
     // ── Everything else → static files (index.html, styles.css, app.js) ──
     return env.ASSETS.fetch(request);
   }
@@ -42,7 +47,9 @@ export default {
   token are rejected with HTTP 403, including from this Worker
   (Cloudflare's datacenter IP ranges are filtered regardless of
   request correctness). See documentation in app.js for the
-  link-out replacement (openCommunity / renderCommunityCard).
+  link-out replacement (renderCommunityCards / openSubreddit).
+  Wayback Machine is not a workaround: Reddit separately blocked
+  archive.org from indexing post detail pages and comments.
   Source: support.reddithelp.com/hc/en-us/articles/42728983564564
 */
 
@@ -172,4 +179,68 @@ function json(payload, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json', ...CORS }
   });
+}
+
+/* ══════════════════════════════════════════════
+   /api/archive – searches the Internet Archive's
+   "texts" collection for scanned manuals and product
+   documentation matching a device name.
+
+   Unlike Reddit, archive.org runs a genuinely open,
+   documented, no-auth search API intended for exactly
+   this kind of use. It has no CORS headers though, so
+   the browser can't call it directly — that's the only
+   reason this goes through the Worker, not a usage
+   restriction on Archive.org's side.
+
+   Docs: https://archive.org/help/aboutsearch.htm
+   Query:  /api/archive?q=iPhone+14+Pro
+   ══════════════════════════════════════════════ */
+async function handleArchive(request) {
+  const url = new URL(request.url);
+  const q = (url.searchParams.get('q') || '').trim();
+
+  if (!q) {
+    return json({ error: 'Missing query parameter "q"' }, 400);
+  }
+
+  // Restrict to scanned text documents (manuals, catalogs) rather than
+  // audio/video/software, and require the term to appear in the title
+  // for relevance rather than matching any metadata field.
+  const query = `title:(${q}) AND mediatype:texts`;
+
+  const archiveUrl =
+    `https://archive.org/advancedsearch.php` +
+    `?q=${encodeURIComponent(query)}` +
+    `&fl[]=identifier&fl[]=title&fl[]=year&fl[]=description` +
+    `&rows=12&page=1&output=json`;
+
+  let resp;
+  try {
+    resp = await fetch(archiveUrl, { headers: { 'Accept': 'application/json' } });
+  } catch (err) {
+    return json({ error: 'Archive.org unreachable', detail: err.message }, 502);
+  }
+
+  if (!resp.ok) {
+    return json({ error: `Archive.org error ${resp.status}` }, resp.status);
+  }
+
+  const data = await resp.json().catch(() => null);
+  const docs = data?.response?.docs;
+  if (!Array.isArray(docs)) {
+    return json({ error: 'Unexpected Archive.org response' }, 502);
+  }
+
+  const items = docs
+    .filter(d => d && d.identifier && d.title)
+    .map(d => ({
+      identifier: d.identifier,
+      title:      d.title,
+      year:       d.year || null,
+      url:        `https://archive.org/details/${d.identifier}`,
+      thumbnail:  `https://archive.org/services/img/${d.identifier}`
+    }));
+
+  return json({ query: q, count: items.length, items });
 }

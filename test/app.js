@@ -833,7 +833,8 @@ function setProduct(name) {
   const modelEl = document.getElementById('product-model');
   if (titleEl) titleEl.textContent = name;
   if (modelEl) modelEl.textContent = 'Erkannt via OCR-Scan';
-  renderCommunityCard();
+  renderCommunityCards();
+  loadArchiveManuals(name);
 }
 
 /* ── Recent scans ── */
@@ -1177,39 +1178,56 @@ function escapeHtml(str) {
    Server-side requests without an approved OAuth token
    are rejected outright — including from Cloudflare
    Workers, which run in datacenter IP ranges Reddit
-   filters regardless of code correctness.
+   filters regardless of code correctness. Wayback Machine
+   is not a viable workaround either: Reddit has separately
+   blocked archive.org from indexing post detail pages and
+   comments specifically to close this exact loophole.
 
-   Rather than embed Reddit content we don't have
-   reliable access to, the card below is generated
-   entirely client-side from data we already have (the
-   scanned device name + our own curated subreddit list)
-   and opens a prepared Reddit search in a new tab.
-   This keeps the app fast, dependency-free, and honest
-   about where the user is headed.
+   Rather than embed Reddit content we don't have reliable
+   access to, we show a horizontally scrollable row of real,
+   curated subreddit cards (same pattern as the home-screen
+   "Inspiration" row). Nothing here is fabricated — every
+   subreddit name is real and every link opens a genuine,
+   pre-built search within that subreddit. The card row is
+   generated entirely client-side from the scanned device
+   name plus our own curated list — no network request needed
+   to render it, only when the user taps through to Reddit.
 ══════════════════════════════════════════════════ */
 
-// Same repair-focused subreddits the app would have searched via API —
-// shown to the user so the destination is transparent before they leave the app.
-const COMMUNITY_SUBS = ['fixit', 'repair', 'mobilerepair', 'electronics', 'techsupport'];
+// Repair-focused subreddits, each with a short human description.
+// Curated manually — this is not a live API result, just a fixed,
+// honest list of communities worth checking for a given device.
+const COMMUNITY_SUBS = [
+  { name: 'fixit',        desc: 'Allgemeine Reparaturfragen aller Art' },
+  { name: 'mobilerepair', desc: 'Smartphones & Tablets' },
+  { name: 'electronics',  desc: 'Elektronik-Grundlagen & Fehlersuche' },
+  { name: 'techsupport',  desc: 'Technischer Support, breite Themenpalette' },
+  { name: 'homelab',      desc: 'Alte Geräte weiterverwenden' }
+];
 
-/* Populate and reveal the community card on the result screen */
-function renderCommunityCard() {
-  const sub  = document.getElementById('community-card-sub');
-  const desc = document.getElementById('community-card-desc');
-  const pills = document.getElementById('community-card-subs');
-  const menuSub = document.getElementById('community-menu-sub');
+/* Render the horizontal row of subreddit cards on the result screen */
+function renderCommunityCards() {
+  const row = document.getElementById('subreddit-row');
+  if (!row) return;
 
-  if (sub)  sub.textContent = `Reddit-Suche zu ${currentDevice}`;
-  if (desc) desc.innerHTML = `Durchsuche Reparatur-Communities nach Erfahrungsberichten zu <b>${escapeHtml(currentDevice)}</b>. Öffnet in einem neuen Tab.`;
-  if (menuSub) menuSub.textContent = 'Öffnet Reddit-Suche im Browser';
-
-  if (pills) {
-    pills.innerHTML = COMMUNITY_SUBS.map(s => `<span class="cc-sub-pill">r/${s}</span>`).join('');
-  }
+  row.innerHTML = COMMUNITY_SUBS.map(sub => `
+    <div class="subreddit-card" onclick="openSubreddit('${escapeHtml(sub.name)}')">
+      <div class="sr-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#FF4500" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="8.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
+          <circle cx="15.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
+          <path d="M8 16c1 1 2.5 1.5 4 1.5s3-.5 4-1.5"/>
+        </svg>
+      </div>
+      <div class="sr-name">r/${escapeHtml(sub.name)}</div>
+      <div class="sr-desc">${escapeHtml(sub.desc)}</div>
+    </div>
+  `).join('');
 }
 
 /*
-  Build a search query from the device name and open Reddit in a new tab.
+  Open a search within one specific subreddit for the current device.
 
   Uses the SECOND cascade tier (brand + product line), not the full exact
   string. The full string (e.g. "Bosch Serie 6 WAT28401") is too narrow —
@@ -1219,13 +1237,100 @@ function renderCommunityCard() {
   device in a casual post. Falls back to the only available term for
   single-token inputs like a bare model code ("SM-A115A1L").
 */
-function openCommunity() {
+function openSubreddit(subreddit) {
   const cascade = buildQueryCascade(currentDevice);
   const term = cascade.length > 1 ? cascade[1] : cascade[0];
-  const query = term + ' repair';
-  const url = `https://www.reddit.com/search/?q=${encodeURIComponent(query)}`;
+  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search/` +
+              `?q=${encodeURIComponent(term)}&restrict_sr=1`;
   window.open(url, '_blank', 'noopener');
 }
 
-/* Render once on load so the demo device already has a filled-in card */
-renderCommunityCard();
+/* Render once on load so the demo device already has filled-in cards */
+renderCommunityCards();
+
+/* ══════════════════════════════════════════════════
+   ARCHIVE.ORG — scanned manuals & product documentation
+
+   Unlike Reddit, the Internet Archive runs a genuinely
+   open, documented, no-auth API meant for exactly this
+   kind of use (archive.org/advancedsearch.php). It has
+   no CORS headers though, so the request still needs to
+   go through our Worker — not because Archive.org blocks
+   it, but because browsers block cross-origin reads
+   without CORS regardless of the server's intent.
+
+   This fills a real gap in mendooR: iFixit and community
+   posts cover current, popular devices well, but older or
+   discontinued equipment (an obsolete Bosch model, a 2005
+   laptop) often only has documentation as a scanned PDF in
+   a library or archive collection. That's exactly what the
+   Internet Archive's "texts" collection holds.
+══════════════════════════════════════════════════ */
+const ARCHIVE_ENDPOINT = '/api/archive';
+
+async function loadArchiveManuals(device) {
+  const list = document.getElementById('archive-list');
+  if (!list) return;
+
+  list.innerHTML = `
+    <div class="skeleton-card"><div class="skel-img shimmer"></div>
+      <div class="skel-lines"><div class="skel-line shimmer"></div><div class="skel-line short shimmer"></div></div>
+    </div>`;
+
+  try {
+    const cascade = buildQueryCascade(device);
+    const term = cascade.length > 1 ? cascade[1] : cascade[0];
+    const res = await fetch(`${ARCHIVE_ENDPOINT}?q=${encodeURIComponent(term)}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) throw new Error('API ' + res.status);
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    if (!items.length) { renderNoArchive(device); return; }
+    renderArchiveManuals(items);
+
+  } catch (err) {
+    renderArchiveError(device);
+  }
+}
+
+function renderArchiveManuals(items) {
+  const list = document.getElementById('archive-list');
+  list.innerHTML = items.map(item => {
+    const thumb = item.thumbnail
+      ? `<img class="archive-thumb" src="${item.thumbnail}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'archive-thumb placeholder\\'>📄</div>'">`
+      : `<div class="archive-thumb placeholder">📄</div>`;
+    return `
+      <div class="archive-card" onclick="openSource('${escapeHtml(item.url)}')">
+        ${thumb}
+        <div class="archive-body">
+          <h3>${escapeHtml(item.title)}</h3>
+          <div class="archive-meta">${escapeHtml(item.year || 'Internet Archive')}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderNoArchive(device) {
+  document.getElementById('archive-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">📄</div>
+      <h3>Keine Dokumente gefunden</h3>
+      <p>Im Internet Archive gibt es zu „${escapeHtml(device)}" aktuell keine passenden Anleitungen.</p>
+      <button onclick="window.open('https://archive.org/search?query=${encodeURIComponent(device)}','_blank','noopener')">Auf archive.org suchen</button>
+    </div>`;
+}
+
+function renderArchiveError(device) {
+  document.getElementById('archive-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">📡</div>
+      <h3>Verbindung fehlgeschlagen</h3>
+      <p>Das Archiv ist gerade nicht erreichbar. Versuche es erneut.</p>
+      <button onclick="loadArchiveManuals(currentDevice)">Erneut versuchen</button>
+    </div>`;
+}
+
+/* Kick off an initial archive search for the demo device shown on load */
+loadArchiveManuals(currentDevice);

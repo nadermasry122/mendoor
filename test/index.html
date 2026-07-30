@@ -323,7 +323,7 @@
           </div>
           <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </div>
-        <div class="menu-item" id="community-menu-item" onclick="openCommunity()">
+        <div class="menu-item" onclick="document.getElementById('community-section').scrollIntoView({behavior:'smooth'})">
           <div class="menu-icon-box" style="background:#3a1a0e;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF4500" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="9"/>
@@ -334,9 +334,9 @@
           </div>
           <div class="menu-text">
             <h4>Community &amp; Foren</h4>
-            <p id="community-menu-sub">Öffnet Reddit-Suche im Browser</p>
+            <p>Reparatur-Subreddits durchsuchen</p>
           </div>
-          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </div>
         <div class="menu-item" onclick="showToast('Recyclinghöfe in der Nähe – coming soon')">
           <div class="menu-icon-box" style="background:#2a2210;">♻️</div>
@@ -348,31 +348,20 @@
         </div>
       </div>
 
-      <!-- ── Community-Karte (selbst gebaut, kein API-Call) ── -->
-      <div class="community-card" onclick="openCommunity()">
-        <div class="cc-top">
-          <div class="cc-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#FF4500" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9"/>
-              <circle cx="8.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
-              <circle cx="15.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
-              <path d="M8 16c1 1 2.5 1.5 4 1.5s3-.5 4-1.5"/>
-              <circle cx="17.5" cy="8.5" r="1.5"/>
-              <path d="M12 8V5.5M12 5.5l2-1"/>
-            </svg>
-          </div>
-          <div class="cc-heading">
-            <div class="cc-title">Community &amp; Foren</div>
-            <div class="cc-sub" id="community-card-sub">Reddit-Suche</div>
-          </div>
-          <div class="cc-external">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/>
-            </svg>
-          </div>
+      <!-- ── Community: horizontal scrollbare Subreddit-Karten (keine Reddit-API, nur reale Subreddit-Namen + Direktlinks) ── -->
+      <div id="community-section" class="sec-block" style="margin-top: var(--gap);">
+        <h2>Community &amp; Foren</h2>
+        <div class="insp-row" id="subreddit-row">
+          <!-- populated by JS -->
         </div>
-        <div class="cc-desc" id="community-card-desc">Durchsuche Reparatur-Communities nach Erfahrungsberichten.</div>
-        <div class="cc-subs" id="community-card-subs"></div>
+      </div>
+
+      <!-- ── Archiv: alte Bedienungsanleitungen über archive.org ── -->
+      <div id="archive-section" class="sec-block" style="margin-top: var(--gap);">
+        <h2>Anleitungen im Archiv</h2>
+        <div class="guides-scroll" id="archive-list" style="max-height:none; padding:0;">
+          <!-- populated by JS -->
+        </div>
       </div>
 
       <!-- ── Quellenverzeichnis ── -->
