@@ -751,7 +751,56 @@ function filterToTypePlate(text) {
   return kept.join('\n');
 }
 
-/* Pull likely device identifiers out of type-plate text */
+/*
+  extractCandidates — structural rules instead of a growing regex/brand list.
+
+  Earlier versions accumulated a new hand-crafted regex for every device
+  shape we tested against (SM-G991B, WAT28401, A2890, 20XW0041 were each
+  a SEPARATE pattern), plus a brand-name list that had to be extended
+  every time an untested manufacturer's plate failed to match. Both are
+  enumeration problems: the set of brands and code formats worldwide is
+  open-ended, so any list-based approach necessarily has permanent gaps —
+  "Latitude" was missing, the next untested device will hit a different
+  gap. No such list can ever be complete; patching it case by case is
+  reactive, not a system.
+
+  Three STRUCTURAL rules replace that accumulation:
+
+  RULE 1 — Explicit label. A line containing a recognized rating-plate
+  label ("Model:", "P/N:", "MTM:") followed by an alphanumeric token is
+  the strongest possible signal — the plate is telling us directly what
+  follows is the identifier. Works for any brand or code format, because
+  it doesn't need to know the SHAPE of the code, only that a label
+  introduces one.
+
+  RULE 2 — Identifier-shaped token. Any token that mixes letters and
+  digits — in ANY arrangement (prefix, suffix, hyphenated, interleaved)
+  — reads as a manufacturer code, because ordinary words in effectively
+  every language don't interleave digits into the middle of a word.
+  This one structural property covers SM-G991B, WAT28401, A2890 and
+  20XW0041 at once, plus any future format never tested against.
+
+  RULE 3 — "Word + Number" convention. A capitalized word (or two)
+  directly followed by a number — "Latitude 7421", "Pavilion 15" — the
+  pattern product LINES use when there's no compact alphanumeric code
+  at all. This is what makes an unlisted brand work correctly without
+  ever adding it anywhere.
+
+  KNOWN_BRANDS is kept only as a minor scoring BOOST for when a listed
+  brand happens to appear — it is no longer a requirement for a line to
+  produce a candidate. An unlisted brand is still caught by rules 1–3.
+
+  No pattern-matching system can be perfect on arbitrary text in
+  arbitrary languages — that's a property of the problem, not a gap in
+  this implementation. So this function deliberately optimizes for
+  RECALL over precision: it surfaces several plausible candidates
+  instead of gambling everything on one "best" guess. The system's
+  actual robustness comes from the confirmation step downstream
+  (showOcrSheet), which presents these as tappable suggestions next to
+  the raw recognized text and a manual input field — a human confirms
+  the right one. Extraction only has to get the answer INTO the list,
+  not rank it first.
+*/
 function extractCandidates(text) {
   if (!text) return [];
 
@@ -771,48 +820,47 @@ function extractCandidates(text) {
     scored.push({ text: v, score: s });
   };
 
-  // Model-number patterns, most specific first
-  const patterns = [
-    { re: /\b(?:model|modell|typ|type)\s*(?:no|nr|number|name)?\.?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i, cap: 1, score: 6 },
-    { re: /\b(?:p\/?n|part\s*(?:no|number))\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i, cap: 1, score: 5 },
-    { re: /\bMTM\s*[:#]?\s*([A-Z0-9\-]{4,20})/i, cap: 1, score: 5 },
-    { re: /\bA\d{4}\b/g, score: 4 },                            // Apple: A2890
-    { re: /\b[A-Z]{2}-?[A-Z]?\d{3,5}[A-Z]{0,4}\b/g, score: 4 }, // SM-G991B
-    { re: /\b\d{2}[A-Z]{2}\d{3,5}[A-Z]{0,3}\b/g, score: 3 },    // Lenovo 20XW0041
-    { re: /\b[A-Z]{2,5}\d{3,6}[A-Z]{0,3}\b/g, score: 3 },       // generic WW90T554
-    /*
-      Generic "ProductName ####" convention — catches lines like "Latitude
-      7421", "Pavilion 15", "Aspire 5" even when the specific product line
-      isn't (and can never completely be) in KNOWN_BRANDS, and when the
-      all-caps patterns above don't match because a titlecase word is
-      separated from its number by a space. This is what makes model
-      recognition work for brands we haven't explicitly listed — the actual
-      requirement for a scanner meant to work worldwide, on any device.
-    */
-    { re: /\b([A-Z][a-zA-Z]{2,15}(?:\s+[A-Z][a-zA-Z]{2,15})?\s+[A-Z]?\d{1,5}[A-Z]{0,3})\b/, cap: 1, score: 5 }
-  ];
+  // RULE 1 — explicit label directly names the identifier that follows.
+  const LABELED = /\b(?:model|modell|typ|type|p\/?n|part\s*(?:no|number)|mtm)\b\.?\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{2,24})/i;
+
+  // Excluded from RULE 2: tokens that are just "number + unit", e.g.
+  // "220-240V", "50Hz", "2.4A" — these mix letters+digits like an
+  // identifier does, but describe an electrical rating, not the device.
+  const UNIT_LIKE = /^\d+([.,]\d+)?[-\/]?\d*(v|va|w|kw|a|ma|mah|wh|hz|khz|ghz|db|kg|g|ml|l)$/i;
+
+  // RULE 3 — capitalized word(s) directly followed by a number.
+  const WORD_NUMBER = /\b([A-Z][a-zA-Z]{2,15}(?:\s+[A-Z][a-zA-Z]{2,15})?\s+[A-Z]?\d{1,5}[A-Z]{0,3})\b/;
 
   lines.forEach(line => {
     const lower = line.toLowerCase();
 
-    // Brand + product-family line is the most useful search term
+    // RULE 1
+    const labelMatch = line.match(LABELED);
+    if (labelMatch && labelMatch[1]) push(labelMatch[1], 6);
+
+    // RULE 2 — any alphanumeric token that mixes letters AND digits.
+    // One structural check replaces what used to be four separate
+    // shape-specific regexes. Excludes tokens that are actually electrical
+    // specs (220-240V, 50Hz) — those also mix letters+digits structurally,
+    // but describe a rating, not the device itself.
+    const tokens = line.match(/[A-Za-z0-9][A-Za-z0-9\-\/]{2,19}/g) || [];
+    tokens.forEach(tok => {
+      const hasLetter = /[A-Za-z]/.test(tok);
+      const hasDigit  = /\d/.test(tok);
+      if (hasLetter && hasDigit && !UNIT_LIKE.test(tok)) push(tok, 4);
+    });
+
+    // RULE 3
+    const wordNumMatch = line.match(WORD_NUMBER);
+    if (wordNumMatch && wordNumMatch[1]) push(wordNumMatch[1], 5);
+
+    // Minor boost only, never a requirement — an unlisted brand is
+    // still caught by rules 1–3 above.
     const brandHit = KNOWN_BRANDS.find(b => lower.includes(b));
     if (brandHit) {
-      // Keep the line if it's short enough to be a product name
       const words = line.split(/\s+/).filter(Boolean);
-      if (words.length <= 6) push(line, 7);
-      else push(brandHit, 4);
+      if (words.length <= 6) push(line, 3);
     }
-
-    patterns.forEach(({ re, cap, score }) => {
-      if (re.global) {
-        const all = line.match(re);
-        if (all) all.forEach(tok => push(tok, score));
-      } else {
-        const m = line.match(re);
-        if (m && m[cap]) push(m[cap], score);
-      }
-    });
   });
 
   // De-dup keeping highest score, then sort
