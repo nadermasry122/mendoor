@@ -100,7 +100,12 @@ async function handleVision(request, env) {
         { type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 }
       ],
       // Hint: languages we expect on type plates
-      imageContext: { languageHints: ['en', 'de'] }
+      // Language hints improve accuracy but don't restrict detection —
+      // Vision can still read other languages without a hint. 'zh' added
+      // because manufacturer type plates sometimes carry Chinese compliance
+      // markings (e.g. CCC certification) alongside the Latin-script model
+      // data; this doesn't hurt Latin-script recognition.
+      imageContext: { languageHints: ['en', 'de', 'zh'] }
     }]
   };
 

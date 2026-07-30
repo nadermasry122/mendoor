@@ -972,6 +972,46 @@ async function searchWithFallback(device) {
   return [];
 }
 
+/*
+  bestSearchTerm — builds ONE good outbound search query from a device name.
+
+  Distinct from buildQueryCascade() above: that function tries several
+  queries in SEQUENCE against iFixit until one returns results. For a
+  single outbound link (Reddit, Archive.org) we only get one shot, so we
+  need the best single term up front — not a fallback ladder.
+
+  The earlier approach reused buildQueryCascade()[1] here, which broke
+  for exactly two-word device names: buildQueryCascade("iPhone 14")
+  returns ["iPhone 14", "iPhone"] — its second entry drops the model
+  number entirely, because the cascade's "first two tokens" stage only
+  triggers above two tokens. That bug was invisible while testing with
+  three-word names ("iPhone 14 Pro") where the cascade still had a
+  usable middle stage.
+
+  This function instead filters per TOKEN: drop only tokens that look
+  like internal manufacturer codes (6+ characters mixing letters and
+  digits, e.g. "WAT28401", "EP-TA200") since nobody writes those
+  verbatim in a casual post. Short alphanumeric identifiers ("A11"),
+  plain numbers ("14", "2019") and words are always kept, because
+  people do search for "Samsung Galaxy A11" or "MacBook Pro 2019".
+*/
+function isModelCodeToken(token) {
+  const hasLetter = /[A-Za-z]/.test(token);
+  const hasDigit  = /\d/.test(token);
+  return token.length >= 6 && hasLetter && hasDigit;
+}
+
+function bestSearchTerm(deviceName) {
+  const clean = deviceName.trim().replace(/\s+/g, ' ');
+  const tokens = clean.split(' ').filter(Boolean);
+  if (tokens.length <= 1) return clean; // single token (e.g. a bare model code) — nothing to trim
+
+  const kept = tokens.filter(t => !isModelCodeToken(t));
+  if (kept.length === 0) return clean;  // safety net: never return an empty query
+
+  return kept.slice(0, 4).join(' ');    // cap length so the query stays a real search phrase
+}
+
 function buildQueryCascade(device) {
   const clean = device.trim().replace(/\s+/g,' ');
   const tokens = clean.split(' ').filter(Boolean);
@@ -1245,20 +1285,9 @@ function renderCommunityCards() {
   `).join('');
 }
 
-/*
-  Open a search within one specific subreddit for the current device.
-
-  Uses the SECOND cascade tier (brand + product line), not the full exact
-  string. The full string (e.g. "Bosch Serie 6 WAT28401") is too narrow —
-  almost no forum post contains that exact model suffix verbatim, so a
-  search for it returns few or zero hits. "Bosch Serie" is specific enough
-  to stay relevant while matching how people actually write about their
-  device in a casual post. Falls back to the only available term for
-  single-token inputs like a bare model code ("SM-A115A1L").
-*/
+/* Open a search within one specific subreddit for the current device. */
 function openSubreddit(subreddit) {
-  const cascade = buildQueryCascade(currentDevice);
-  const term = cascade.length > 1 ? cascade[1] : cascade[0];
+  const term = bestSearchTerm(currentDevice);
   const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search/` +
               `?q=${encodeURIComponent(term)}&restrict_sr=1`;
   window.open(url, '_blank', 'noopener');
@@ -1297,8 +1326,7 @@ async function loadArchiveManuals(device) {
     </div>`;
 
   try {
-    const cascade = buildQueryCascade(device);
-    const term = cascade.length > 1 ? cascade[1] : cascade[0];
+    const term = bestSearchTerm(device);
     const res = await fetch(`${ARCHIVE_ENDPOINT}?q=${encodeURIComponent(term)}`, {
       headers: { 'Accept': 'application/json' }
     });
