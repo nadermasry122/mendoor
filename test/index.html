@@ -323,21 +323,41 @@
           </div>
           <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </div>
-        <div class="menu-item" onclick="document.getElementById('community-section').scrollIntoView({behavior:'smooth'})">
-          <div class="menu-icon-box" style="background:#3a1a0e;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF4500" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9"/>
-              <circle cx="8.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
-              <circle cx="15.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
-              <path d="M8 16c1 1 2.5 1.5 4 1.5s3-.5 4-1.5"/>
-            </svg>
-          </div>
+
+        <!-- ── Disclosure Control: Community & Foren ── -->
+        <div class="menu-item disclosure-trigger" id="community-trigger" onclick="toggleDisclosure('community')">
+          <div class="menu-icon-box" style="background:#3a1a0e;">💬</div>
           <div class="menu-text">
             <h4>Community &amp; Foren</h4>
             <p>Reparatur-Subreddits durchsuchen</p>
           </div>
-          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          <svg class="chevron disclosure-chevron" id="community-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </div>
+        <div class="disclosure-panel" id="community-panel">
+          <div class="disclosure-panel-inner">
+            <div class="insp-row" id="subreddit-row">
+              <!-- populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Disclosure Control: Anleitungen im Archiv ── -->
+        <div class="menu-item disclosure-trigger" id="archive-trigger" onclick="toggleDisclosure('archive')">
+          <div class="menu-icon-box" style="background:#182a38;">📄</div>
+          <div class="menu-text">
+            <h4>Anleitungen im Archiv</h4>
+            <p>Alte Bedienungsanleitungen finden</p>
+          </div>
+          <svg class="chevron disclosure-chevron" id="archive-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+        <div class="disclosure-panel" id="archive-panel">
+          <div class="disclosure-panel-inner">
+            <div id="archive-list">
+              <!-- populated by JS -->
+            </div>
+          </div>
+        </div>
+
         <div class="menu-item" onclick="showToast('Recyclinghöfe in der Nähe – coming soon')">
           <div class="menu-icon-box" style="background:#2a2210;">♻️</div>
           <div class="menu-text">
@@ -345,57 +365,6 @@
             <p>Richtig recyceln oder neu verwenden</p>
           </div>
           <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
-        </div>
-      </div>
-
-      <!-- ── Community: horizontal scrollbare Subreddit-Karten (keine Reddit-API, nur reale Subreddit-Namen + Direktlinks) ── -->
-      <div id="community-section" class="sec-block" style="margin-top: var(--gap);">
-        <h2>Community &amp; Foren</h2>
-        <div class="insp-row" id="subreddit-row">
-          <!-- populated by JS -->
-        </div>
-      </div>
-
-      <!-- ── Archiv: alte Bedienungsanleitungen über archive.org ── -->
-      <div id="archive-section" class="sec-block" style="margin-top: var(--gap);">
-        <h2>Anleitungen im Archiv</h2>
-        <div class="guides-scroll" id="archive-list" style="max-height:none; padding:0;">
-          <!-- populated by JS -->
-        </div>
-      </div>
-
-      <!-- ── Quellenverzeichnis ── -->
-      <div class="sources-block">
-        <h3>Wissenschaftliche Quellen</h3>
-
-        <div class="source-item" onclick="openSource('https://ewastemonitor.info/wp-content/uploads/2024/12/GEM_2024_EN_11_NOV-web.pdf')">
-          <span class="source-cite">Baldé et al. (2024)</span>
-          <span class="source-title">Global E-waste Monitor 2024 – Zahlen & Kategorien zu Elektroschrott weltweit</span>
-          <span class="source-doi">ISBN 978-92-61-38781-5 · ITU/UNITAR</span>
-        </div>
-
-        <div class="source-item" onclick="openSource('https://www.researchgate.net/publication/380215371')">
-          <span class="source-cite">Bayraktaroğlu & İdemen (2024)</span>
-          <span class="source-title">Redefining Repair as a Value Co-Creation Process for Circular Economy – Facilitated DIY Repair (FDR)</span>
-          <span class="source-doi">DOI 10.57698/v18i1.01</span>
-        </div>
-
-        <div class="source-item" onclick="openSource('https://onlinelibrary.wiley.com/doi/abs/10.1111/jiec.13279')">
-          <span class="source-cite">Parajuly et al. (2024)</span>
-          <span class="source-title">Nutzeranforderungen an mobile Reparatur- und Recyclinganwendungen</span>
-          <span class="source-doi">DOI 10.1111/jiec.13279</span>
-        </div>
-
-        <div class="source-item" onclick="openSource('https://onlinelibrary.wiley.com/doi/full/10.1111/jiec.13451')">
-          <span class="source-cite">Sterkens et al. (2023)</span>
-          <span class="source-title">Mobile OCR-Pipelines zur Geräteerkennung und Textextraktion auf Typenschildern</span>
-          <span class="source-doi">DOI 10.1111/jiec.13451</span>
-        </div>
-
-        <div class="source-item" onclick="openSource('https://www.mdpi.com/2305-6304/9/10/236')">
-          <span class="source-cite">Attia et al. (2021)</span>
-          <span class="source-title">Urban Mining – Rückgewinnung von Sekundärrohstoffen aus Elektroschrott</span>
-          <span class="source-doi">DOI 10.3390/toxics9100236</span>
         </div>
       </div>
 

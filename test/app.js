@@ -14,6 +14,32 @@ function goTo(id) {
   document.getElementById(id).classList.add('active');
 }
 
+/*
+  Disclosure Control (Apple HIG pattern): a tap expands or collapses a
+  panel of content in place, next to the row that controls it. Opening
+  one panel closes any other open panel, so only one is visible at a
+  time — keeps the menu list compact rather than growing indefinitely.
+*/
+function toggleDisclosure(key) {
+  const trigger = document.getElementById(key + '-trigger');
+  const panel   = document.getElementById(key + '-panel');
+  if (!trigger || !panel) return;
+
+  const isOpen = panel.classList.contains('expanded');
+
+  // Close any other open disclosure first
+  document.querySelectorAll('.disclosure-panel.expanded').forEach(p => {
+    if (p !== panel) {
+      p.classList.remove('expanded');
+      const otherTrigger = document.getElementById(p.id.replace('-panel', '-trigger'));
+      if (otherTrigger) otherTrigger.classList.remove('expanded');
+    }
+  });
+
+  panel.classList.toggle('expanded', !isOpen);
+  trigger.classList.toggle('expanded', !isOpen);
+}
+
 /* ── Toast ── */
 let toastTimer;
 function showToast(msg) {
@@ -1205,21 +1231,14 @@ const COMMUNITY_SUBS = [
   { name: 'homelab',      desc: 'Alte Geräte weiterverwenden' }
 ];
 
-/* Render the horizontal row of subreddit cards on the result screen */
+/* Render the horizontal row of subreddit cards inside the disclosure panel */
 function renderCommunityCards() {
   const row = document.getElementById('subreddit-row');
   if (!row) return;
 
   row.innerHTML = COMMUNITY_SUBS.map(sub => `
     <div class="subreddit-card" onclick="openSubreddit('${escapeHtml(sub.name)}')">
-      <div class="sr-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#FF4500" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <circle cx="8.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
-          <circle cx="15.5" cy="12.5" r="1.3" fill="#FF4500" stroke="none"/>
-          <path d="M8 16c1 1 2.5 1.5 4 1.5s3-.5 4-1.5"/>
-        </svg>
-      </div>
+      <div class="sr-icon">💬</div>
       <div class="sr-name">r/${escapeHtml(sub.name)}</div>
       <div class="sr-desc">${escapeHtml(sub.desc)}</div>
     </div>
@@ -1297,19 +1316,16 @@ async function loadArchiveManuals(device) {
 
 function renderArchiveManuals(items) {
   const list = document.getElementById('archive-list');
-  list.innerHTML = items.map(item => {
-    const thumb = item.thumbnail
-      ? `<img class="archive-thumb" src="${item.thumbnail}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'archive-thumb placeholder\\'>📄</div>'">`
-      : `<div class="archive-thumb placeholder">📄</div>`;
-    return `
-      <div class="archive-card" onclick="openSource('${escapeHtml(item.url)}')">
-        ${thumb}
-        <div class="archive-body">
-          <h3>${escapeHtml(item.title)}</h3>
-          <div class="archive-meta">${escapeHtml(item.year || 'Internet Archive')}</div>
-        </div>
-      </div>`;
-  }).join('');
+  list.innerHTML = items.map(item => `
+    <div class="archive-row" onclick="openSource('${escapeHtml(item.url)}')">
+      <div class="archive-icon">📄</div>
+      <div class="archive-info">
+        <h4>${escapeHtml(item.title)}</h4>
+        <p>${escapeHtml(item.year || 'Internet Archive')}</p>
+      </div>
+      <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>
+    </div>
+  `).join('');
 }
 
 function renderNoArchive(device) {
