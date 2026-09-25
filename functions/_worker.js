@@ -1,5 +1,5 @@
 // mendooR Worker – routes /api/* to serverless functions, everything else to static files.
-// Requires a Secrets Store binding named GOOGLE_VISION_API_KEY (see wrangler.jsonc).
+// Requires Secrets Store bindings named GOOGLE_VISION_API_KEY and TAVILY_API_KEY (see wrangler.jsonc).
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -33,6 +33,11 @@ export default {
     // ── Internet Archive manual/documentation search ──
     if (url.pathname === '/api/archive') {
       return handleArchive(request);
+    }
+
+    // ── Tavily web search (trusted-domain articles) ──
+    if (url.pathname === '/api/websearch') {
+      return handleWebSearch(request, env);
     }
 
     // ── Everything else → static files (index.html, styles.css, app.js) ──
@@ -246,6 +251,95 @@ async function handleArchive(request) {
       year:       d.year || null,
       url:        `https://archive.org/details/${d.identifier}`,
       thumbnail:  `https://archive.org/services/img/${d.identifier}`
+    }));
+
+  return json({ query: q, count: items.length, items });
+}
+
+/* ══════════════════════════════════════════════
+   /api/websearch – proxies a query to Tavily,
+   restricted server-side to a curated list of
+   trusted German tech/repair domains.
+
+   Why Tavily: Google's Custom Search JSON API is
+   closed to new customers (retires 2027-01-01); its
+   suggested successor, Vertex AI Search, bills from
+   the first query with no free tier at all. A public
+   SearXNG instance was tested and returned 403 — most
+   public instances disable their JSON API specifically
+   to block automated callers, the same wall Reddit's
+   API hit. Tavily's free plan (1,000 searches/month,
+   renews monthly, no card required at signup) was the
+   only option found that can't silently start billing
+   the account — see docs.tavily.com/documentation/api-reference/endpoint/search.
+
+   Query:  /api/websearch?q=iPhone+14+Pro
+   ══════════════════════════════════════════════ */
+const TRUSTED_DOMAINS = [
+  'computerbase.de',
+  'chip.de',
+  'notebookcheck.net',
+  'heise.de',
+  'golem.de',
+  'pcwelt.de'
+];
+
+async function handleWebSearch(request, env) {
+  const url = new URL(request.url);
+  const q = (url.searchParams.get('q') || '').trim();
+
+  if (!q) {
+    return json({ error: 'Missing query parameter "q"' }, 400);
+  }
+
+  // Read the secret from the Secrets Store binding
+  let apiKey;
+  try {
+    apiKey = await env.TAVILY_API_KEY.get();
+  } catch (err) {
+    return json({ error: 'API key not configured', detail: err.message }, 500);
+  }
+  if (!apiKey) {
+    return json({ error: 'API key empty' }, 500);
+  }
+
+  // "Reparatur" biases results toward repair content — the trusted
+  // domains cover general tech news too, not just repairs.
+  const tavilyBody = {
+    query: `${q} Reparatur`,
+    search_depth: 'basic',       // "advanced" costs 2 credits per call instead of 1
+    max_results: 8,
+    include_domains: TRUSTED_DOMAINS
+  };
+
+  let tavilyResp;
+  try {
+    tavilyResp = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,   // NOT api_key in the body — that form is deprecated
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(tavilyBody)
+    });
+  } catch (err) {
+    return json({ error: 'Tavily unreachable', detail: err.message }, 502);
+  }
+
+  if (!tavilyResp.ok) {
+    const errText = await tavilyResp.text().catch(() => '');
+    return json({ error: `Tavily error ${tavilyResp.status}`, detail: errText.slice(0, 300) }, tavilyResp.status);
+  }
+
+  const data = await tavilyResp.json().catch(() => null);
+  const results = Array.isArray(data?.results) ? data.results : [];
+
+  const items = results
+    .filter(r => r && r.url)
+    .map(r => ({
+      title:   r.title || 'Ohne Titel',
+      url:     r.url,
+      snippet: (r.content || '').slice(0, 220)
     }));
 
   return json({ query: q, count: items.length, items });

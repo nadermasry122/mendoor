@@ -677,6 +677,54 @@ h1, h2, h3, h4, p, span, div, a, input {
 }
 .archive-info p { font-size: clamp(10px,2.5vw,11.5px); color: var(--text3); margin-top: 2px; }
 
+/* ── Web search rows (Tavily) — mirrors the archive-row layout so the
+   third source reads as part of the same visual system rather than a
+   bolted-on new pattern. Own icon background (teal-blue) keeps it
+   visually distinguishable from Archive's rows at a glance. ── */
+.websearch-row {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px,2.5vw,12px);
+  padding: clamp(9px,2.2vh,12px) 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.websearch-row:first-child { border-top: none; padding-top: 0; }
+
+.websearch-icon {
+  width: clamp(32px,8vw,38px);
+  height: clamp(32px,8vw,38px);
+  border-radius: 9px;
+  background: #1a2a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: clamp(14px,3.5vw,16px);
+}
+.websearch-info { flex: 1; min-width: 0; }
+.websearch-info h4 {
+  font-size: clamp(12.5px,3.2vw,14px);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.websearch-info p {
+  font-size: clamp(10px,2.5vw,11.5px);
+  color: var(--text3);
+  margin-top: 2px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ══════════════════════════════════════
    SCREEN 4 – GUIDE LIST  (iFixit)
 ══════════════════════════════════════ */

@@ -951,6 +951,7 @@ function setProduct(name) {
   if (modelEl) modelEl.textContent = 'Erkannt via OCR-Scan';
   renderCommunityCards();
   loadArchiveManuals(name);
+  loadWebSearchResults(name);
 }
 
 /* ── Recent scans ── */
@@ -1466,5 +1467,112 @@ function renderArchiveError(device) {
     </div>`;
 }
 
-/* Kick off an initial archive search for the demo device shown on load */
+/* ══════════════════════════════════════════════════
+   WEB SEARCH (Tavily) — trusted-domain article search
+
+   Google's Custom Search JSON API closed to new
+   customers in 2025 and retires entirely on 2027-01-01;
+   its suggested successor, Vertex AI Search, bills from
+   the very first query with no free daily quota at all.
+   A public SearXNG instance was tested live and returned
+   403 Forbidden — most public instances disable the JSON
+   API specifically to block automated queries like ours,
+   the same structural problem we hit with Reddit.
+
+   Tavily was chosen after comparing it against SerpApi,
+   Serper.dev, Brave and Exa: it is the only option whose
+   free plan (1,000 searches/month) both RENEWS monthly
+   (Serper's 2,500 is a one-time grant) and requires NO
+   card at signup (Brave dropped its no-card free tier in
+   Feb 2026) — so this feature cannot silently start
+   billing the account.
+
+   Results are restricted server-side to a curated list of
+   German tech/repair sites via Tavily's include_domains
+   parameter (see handleWebSearch in the Worker), so this
+   surfaces real articles rather than generic web noise.
+══════════════════════════════════════════════════ */
+const WEBSEARCH_ENDPOINT = '/api/websearch';
+
+// Same trusted domains the Worker restricts Tavily to — used here only
+// to build the Google fallback link when Tavily has nothing or is down.
+const TRUSTED_WEB_DOMAINS = ['computerbase.de','chip.de','notebookcheck.net','heise.de','golem.de','pcwelt.de'];
+
+/*
+  Zero-cost, zero-setup fallback: a site-restricted Google search link,
+  the same "link-out instead of API call" pattern already used for
+  Reddit. Used only when Tavily returns nothing or is unreachable, so
+  the panel never dead-ends even if the primary source has a bad day.
+*/
+function buildSiteRestrictedSearchUrl(device) {
+  const term = bestSearchTerm(device);
+  const siteFilter = '(' + TRUSTED_WEB_DOMAINS.map(d => `site:${d}`).join(' OR ') + ')';
+  return `https://www.google.com/search?q=${encodeURIComponent(term + ' Reparatur ' + siteFilter)}`;
+}
+
+async function loadWebSearchResults(device) {
+  const list = document.getElementById('websearch-list');
+  if (!list) return;
+
+  list.innerHTML = `
+    <div class="skeleton-card"><div class="skel-img shimmer"></div>
+      <div class="skel-lines"><div class="skel-line shimmer"></div><div class="skel-line short shimmer"></div></div>
+    </div>`;
+
+  try {
+    const term = bestSearchTerm(device);
+    const res = await fetch(`${WEBSEARCH_ENDPOINT}?q=${encodeURIComponent(term)}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) throw new Error('API ' + res.status);
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    if (!items.length) { renderNoWebSearch(device); return; }
+    renderWebSearchResults(items);
+
+  } catch (err) {
+    renderWebSearchError(device);
+  }
+}
+
+function renderWebSearchResults(items) {
+  const list = document.getElementById('websearch-list');
+  list.innerHTML = items.map(item => `
+    <div class="websearch-row" onclick="openSource('${escapeHtml(item.url)}')">
+      <div class="websearch-icon">🌐</div>
+      <div class="websearch-info">
+        <h4>${escapeHtml(item.title)}</h4>
+        <p>${escapeHtml(item.snippet || '')}</p>
+      </div>
+      <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>
+    </div>
+  `).join('');
+}
+
+function renderNoWebSearch(device) {
+  const fallback = buildSiteRestrictedSearchUrl(device);
+  document.getElementById('websearch-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">🌐</div>
+      <h3>Keine Artikel gefunden</h3>
+      <p>Zu „${escapeHtml(device)}" gibt es auf den durchsuchten Seiten aktuell keine passenden Artikel.</p>
+      <button onclick="window.open('${fallback}','_blank','noopener')">Auf Google suchen</button>
+    </div>`;
+}
+
+function renderWebSearchError(device) {
+  const fallback = buildSiteRestrictedSearchUrl(device);
+  document.getElementById('websearch-list').innerHTML = `
+    <div class="state-box">
+      <div class="ico">📡</div>
+      <h3>Verbindung fehlgeschlagen</h3>
+      <p>Die Websuche ist gerade nicht erreichbar.</p>
+      <button onclick="loadWebSearchResults(currentDevice)">Erneut versuchen</button>
+      <button onclick="window.open('${fallback}','_blank','noopener')" style="margin-top:8px;background:var(--bg3);color:var(--text2);">Stattdessen auf Google suchen</button>
+    </div>`;
+}
+
+/* Kick off an initial search for the demo device shown on load */
 loadArchiveManuals(currentDevice);
+loadWebSearchResults(currentDevice);
