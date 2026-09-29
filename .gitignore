@@ -3,3 +3,8 @@
 !.dev.vars.example
 .env*
 !.env.example
+
+# secrets — never commit
+*.key
+*.pem
+secrets.json
