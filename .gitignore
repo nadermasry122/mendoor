@@ -1,4 +1,12 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
 # wrangler files
+.wrangler/
+.vite-dev.log
 .dev.vars*
 !.dev.vars.example
 .env*
