@@ -1,0 +1,81 @@
+/* ══════════════════════════════════════════════════════════════
+   mendooR — Design-Tokens (ADR C10)
+   ──────────────────────────────────────────────────────────────
+   Helles, lebendiges Farbsystem: „Neues Leben in alte Technik".
+
+   Fünf Basisfarben — alle weiteren Töne entstehen ausschließlich
+   durch Deckkraft/Mischung dieser fünf (color-mix). Neutrale Flächen
+   (Weiß) und die dunkle Kamera-Insel sind bewusst außerhalb der
+   Farbpalette gehalten.
+
+   Bedeutung:
+     · Papier   → Grundfläche, warm und leicht (statt düsterem Schwarz)
+     · Grün     → Leben, Reparatur, Wiederverwendung (Primärakzent)
+     · Amber    → Energie, Wärme, Upcycling (Sekundärakzent)
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Die 5 Basisfarben ── */
+  --c-bg:      #F4F6F1; /* 1 · Hintergrund  — warmes Papierweiß */
+  --c-primary: #14A05F; /* 2 · Akzent       — frisches Reparatur-Grün */
+  --c-accent:  #F59E0B; /* 3 · Sekundärakzent — warmes Amber */
+  --c-text:    #14231B; /* 4 · Primärtext   — tiefes Tannengrün */
+  --c-muted:   #66766D; /* 5 · Sekundärtext — Graugrün */
+
+  /* Neutrale Fläche (kein Paletten-Farbton) */
+  --c-surface: #FFFFFF;
+
+  /* ── Ableitungen: nur Deckkraft/Mix der Basisfarben ── */
+  --c-elevated:      color-mix(in srgb, var(--c-text) 4%, transparent);
+  --c-border:        color-mix(in srgb, var(--c-text) 9%, transparent);
+  --c-border-strong: color-mix(in srgb, var(--c-text) 18%, transparent);
+  --c-text-2:        color-mix(in srgb, var(--c-text) 70%, transparent);
+  --c-primary-dim:   color-mix(in srgb, var(--c-primary) 12%, transparent);
+  --c-primary-soft:  color-mix(in srgb, var(--c-primary) 20%, transparent);
+  --c-primary-glow:  color-mix(in srgb, var(--c-primary) 26%, transparent);
+  --c-accent-dim:    color-mix(in srgb, var(--c-accent) 16%, transparent);
+  --c-accent-soft:   color-mix(in srgb, var(--c-accent) 28%, transparent);
+  --c-icon-bg:       color-mix(in srgb, var(--c-primary) 12%, transparent);
+  --c-overlay:       color-mix(in srgb, var(--c-surface) 84%, transparent);
+  --c-scrim:         color-mix(in srgb, var(--c-surface) 92%, transparent);
+
+  /* ── Kamera: bewusst dunkle Insel (Video braucht dunklen Kontext) ── */
+  --cam-bg:      #0B100E;
+  --cam-text:    #ECF5EF;
+  --cam-muted:   #9DB0A6;
+  --cam-border:  rgba(236, 245, 239, 0.14);
+  --cam-overlay: rgba(11, 16, 14, 0.55);
+  --cam-scrim:   rgba(11, 16, 14, 0.92);
+
+  /* ── Schatten (neutrale Tiefe für die hellen Karten) ── */
+  --shadow-1: 0 1px 2px rgba(20, 35, 27, 0.05), 0 1px 3px rgba(20, 35, 27, 0.05);
+  --shadow-2: 0 4px 12px rgba(20, 35, 27, 0.08), 0 1px 3px rgba(20, 35, 27, 0.05);
+
+  /* ── Spacing-Skala (statt unkontrollierter vh-Clamps) ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+
+  /* Horizontaler Screen-Rand + Standardabstand (leicht fluide) */
+  --pad: clamp(16px, 4vw, 24px);
+  --gap: clamp(10px, 2.2vw, 14px);
+
+  /* ── Radien ── */
+  --radius:    clamp(16px, 3.5vw, 22px);
+  --radius-sm: clamp(10px, 2.2vw, 14px);
+  --radius-xs: clamp(8px, 1.8vw, 11px);
+
+  --nav-h: clamp(56px, 9vh, 76px);
+
+  /* ── Typografie-Skala ── */
+  --fs-h1:    clamp(24px, 7vw, 38px);
+  --fs-h2:    clamp(15px, 4vw, 21px);
+  --fs-h3:    clamp(13px, 3.5vw, 17px);
+  --fs-body:  clamp(12px, 3vw, 15px);
+  --fs-small: clamp(11px, 2.5vw, 13px);
+  --fs-xs:    clamp(10px, 2.2vw, 12px);
+}

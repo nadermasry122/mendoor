@@ -3,12 +3,21 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "mendooR — Bachelorarbeit (Cloudflare Worker + static front-end)",
+  "description": "mendooR — React/Vite front-end (Bachelorarbeit)",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.2",
     "wrangler": "^4.146.0"
   }
 }
