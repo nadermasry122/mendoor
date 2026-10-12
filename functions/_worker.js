@@ -16,6 +16,17 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
 
+    // ── Legacy-MVP-Umschaltung per Query-Parameter ──
+    // Beispiele: /?version=legacy · /?legacy=1 · /?utm_content=legacy
+    // Leitet – unter Beibehaltung der Parameter – auf die statische
+    // Altversion unter /legacy/ um. So lassen sich beide MVPs über eine
+    // einzige Live-URL zeigen. Direktaufrufe von /legacy/ bleiben unberührt.
+    if (url.pathname === '/' && wantsLegacy(url)) {
+      const target = new URL('/legacy/', url);
+      target.search = url.search;
+      return Response.redirect(target.toString(), 302);
+    }
+
     // ── Health check ──
     if (url.pathname === '/api/ping') {
       return json({
@@ -40,10 +51,24 @@ export default {
       return handleWebSearch(request, env);
     }
 
-    // ── Everything else → static files (index.html, styles.css, app.js) ──
+    // ── Everything else → static files ──
     return env.ASSETS.fetch(request);
   }
 };
+
+/* Legacy-MVP-Umschaltung: erkennt u. a. ?version=legacy, ?legacy=1,
+   ?utm_content=legacy oder ?utm_campaign=old (siehe fetch-Routing oben). */
+const LEGACY_PARAM_KEYS = [
+  'version', 'legacy', 'mvp', 'view',
+  'utm_content', 'utm_campaign', 'utm_source', 'utm_term'
+];
+function wantsLegacy(url) {
+  for (const key of LEGACY_PARAM_KEYS) {
+    const value = url.searchParams.get(key);
+    if (value && /^(legacy|old|alt|v1|1)$/i.test(value.trim())) return true;
+  }
+  return false;
+}
 
 /*
   NOTE — Reddit API integration removed 2026-07.
