@@ -5,6 +5,7 @@ import { ScannerScreen } from './components/scanner/ScannerScreen.jsx';
 import { ResultScreen } from './components/result/ResultScreen.jsx';
 import { GuidesScreen } from './components/guides/GuidesScreen.jsx';
 import { GuideDetailScreen } from './components/guides/GuideDetailScreen.jsx';
+import { InspirationDetailScreen } from './components/inspiration/InspirationDetailScreen.jsx';
 
 /*
  * App-Shell: Statusleiste bleibt über allen Screens sichtbar (wie im
@@ -22,6 +23,9 @@ export function App() {
       {screen === 'result' && <ResultScreen />}
       {screen === 'guides' && <GuidesScreen />}
       {screen === 'guideDetail' && <GuideDetailScreen guideId={params.guideId} />}
+      {screen === 'inspirationDetail' && (
+        <InspirationDetailScreen inspirationId={params.inspirationId} />
+      )}
 
       <Toast message={toast} />
     </div>

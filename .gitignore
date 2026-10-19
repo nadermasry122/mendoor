@@ -16,3 +16,6 @@ dist/
 *.key
 *.pem
 secrets.json
+
+# Wissenschaftliche Vertiefung — lokaler Arbeitsordner, nicht versionieren
+Wissenschaftliche-Vertiefung/

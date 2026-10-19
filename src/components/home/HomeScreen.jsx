@@ -17,9 +17,22 @@ export function HomeScreen() {
     else showToast('Profil – coming soon');
   };
 
+  /*
+   * Inspirationen haben ein eigenes Ziel. Insbesondere darf hier niemals
+   * der Ergebnis-Screen geöffnet werden: Der zeigt `currentDevice` und
+   * würde die zuletzt gescannte Geräteansicht unterschieben.
+   */
   const handleInspiration = (item) => {
-    if (item.to === 'result') navigate('result');
-    else showToast('Guide folgt bald');
+    if (item.kind === 'guide') {
+      navigate('inspirationDetail', { inspirationId: item.id });
+    } else if (item.kind === 'external' && item.href) {
+      window.open(item.href, '_blank', 'noopener,noreferrer');
+    } else if (item.kind === 'assistant') {
+      // Der KI-Assistent ist noch nicht implementiert (siehe ADR D6).
+      showToast('KI-Hilfe folgt bald');
+    } else {
+      showToast('Guide folgt bald');
+    }
   };
 
   return (

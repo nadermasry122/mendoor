@@ -689,6 +689,99 @@
 }
 .detail-section > p { font-size: clamp(13px, 3.3vw, 15px); color: var(--c-text-2); line-height: 1.6; }
 
+/* ── Inspiration-Detail (kuratierte Reuse-Ideen) ── */
+.insp-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding-top: var(--gap);
+}
+.insp-intro__icon {
+  flex-shrink: 0;
+  width: clamp(44px, 12vw, 54px);
+  height: clamp(44px, 12vw, 54px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--c-primary-dim);
+  color: var(--c-primary);
+}
+.insp-intro p {
+  flex: 1;
+  min-width: 0;
+  font-size: clamp(13px, 3.3vw, 15px);
+  color: var(--c-text-2);
+  line-height: 1.6;
+}
+.insp-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.insp-list li {
+  position: relative;
+  padding-left: 18px;
+  font-size: clamp(13px, 3.3vw, 15px);
+  line-height: 1.55;
+  color: var(--c-text-2);
+}
+.insp-list li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.55em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-primary);
+}
+.insp-list--compact { gap: 6px; }
+.insp-list--compact li { font-size: var(--fs-small); }
+.step__title {
+  display: block;
+  margin-bottom: 4px;
+  font-size: clamp(13px, 3.4vw, 15px);
+  font-weight: 700;
+  color: var(--c-text);
+}
+.insp-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--c-accent-soft);
+  border-radius: var(--radius-sm);
+  background: var(--c-accent-dim);
+}
+.insp-notice__icon { flex-shrink: 0; margin-top: 1px; color: var(--c-accent); }
+.insp-notice h2 {
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-small);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--c-text);
+}
+.insp-notice .insp-list li::before { background: var(--c-accent); }
+.insp-sources { display: flex; flex-direction: column; gap: var(--sp-2); }
+.insp-sources a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-small);
+  color: var(--c-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.insp-sources a:hover { text-decoration: none; }
+.insp-note {
+  padding: var(--sp-5) var(--pad) 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--c-muted);
+}
+
 /* ── Rich-Text aus Fremdquellen (iFixit): Links, Listen, Code ── */
 .rich-text { min-width: 0; }
 .rich-text a { color: var(--c-primary); text-decoration: underline; text-underline-offset: 2px; }
