@@ -169,7 +169,7 @@
   text-align: center;
 }
 
-/* Zuletzt gescannt */
+/* Zuletzt verwendet */
 .recent-item {
   display: flex;
   align-items: center;
@@ -561,11 +561,20 @@
   background: var(--c-elevated);
 }
 
-.score-row { display: flex; gap: var(--gap); padding: 0 var(--pad) var(--gap); }
-.score-pill { flex: 1; padding: var(--sp-4) var(--sp-1); border-radius: var(--radius-sm); background: var(--c-surface); box-shadow: var(--shadow-1); text-align: center; }
-.score-pill__val { font-size: clamp(18px, 5vw, 24px); font-weight: 800; color: var(--c-primary); }
-.score-pill__lbl { margin-top: 3px; font-size: var(--fs-xs); color: var(--c-muted); }
-.score-pill--alt .score-pill__val { color: var(--c-muted); }
+/* Kompakte Quellenlage (dynamisch aus den iFixit-Treffern) */
+.source-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: 0 var(--pad) var(--gap);
+  font-size: var(--fs-xs);
+  color: var(--c-muted);
+}
+.source-strip__item { display: inline-flex; align-items: baseline; gap: 4px; }
+.source-strip__item strong { font-size: var(--fs-small); font-weight: 700; color: var(--c-text); }
+.source-strip__sep { width: 1px; height: 10px; background: var(--c-border-strong); }
+.source-strip--muted { color: var(--c-muted); }
 
 /* KI-Assistenz (ADR D6/D7): optionaler, eingeklappter Eintrag in der Quellenliste */
 .disclosure--ai[data-open='true'] > .disclosure__panel { max-height: 3000px; }
@@ -955,8 +964,6 @@
 
 @media (max-width: 340px) {
   .product-card__img { display: none; }
-  .score-row { flex-wrap: wrap; }
-  .score-pill { flex: 1 1 72px; }
   .hero { height: clamp(104px, 26vh, 150px); }
 
   .cam-controls { padding-left: 10px; padding-right: 10px; }
@@ -991,7 +998,7 @@
   .section-label,
   .section-title,
   .product-card,
-  .score-row,
+  .source-strip,
   .menu-list {
     max-width: 640px;
     margin-left: auto;
@@ -1009,3 +1016,10 @@
 @media (min-width: 1200px) {
   .guides-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+.product-status--muted .product-status__dot { background: var(--c-muted); }
+.product-status--muted span { color: var(--c-muted); }
+.ai-panel__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ai-panel__save-error { font-size: var(--fs-xs); color: var(--c-muted); }
+.saved-ai-actions { padding: var(--sp-4) var(--pad) var(--sp-6); }
+.recent-item__chevron { flex-shrink: 0; color: var(--c-muted); }

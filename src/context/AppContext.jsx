@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { DEMO_DEVICE } from '../constants/content.js';
+import { deviceSourceLabel, guessDeviceCategory } from '../lib/device.js';
 
 const AppContext = createContext(null);
 
@@ -12,6 +13,7 @@ export function AppProvider({ children }) {
   const [screen, setScreen] = useState('home');
   const [params, setParams] = useState({});
   const [currentDevice, setCurrentDevice] = useState(DEMO_DEVICE);
+  const [currentDeviceSource, setCurrentDeviceSource] = useState('demo');
   const [recentScans, setRecentScans] = useState([]);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -32,20 +34,48 @@ export function AppProvider({ children }) {
    * Das Gerät wird als letzter Scan gemerkt; Duplikate werden nach oben
    * gezogen statt mehrfach gelistet.
    */
-  const openDevice = useCallback((name) => {
+  const openDevice = useCallback((name, source = 'ocr') => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const category = guessDeviceCategory(trimmed);
     setCurrentDevice(trimmed);
+    setCurrentDeviceSource(source);
     setRecentScans((prev) => {
-      const entry = { id: `${trimmed}-${Date.now()}`, name: trimmed, icon: 'smartphone', meta: 'Erkannt via Scan' };
+      const entry = {
+        id: `${trimmed}-${Date.now()}`,
+        name: trimmed,
+        icon: category.icon,
+        meta: deviceSourceLabel(source),
+        source,
+      };
       const withoutDupe = prev.filter((r) => r.name !== trimmed);
       return [entry, ...withoutDupe].slice(0, 5);
     });
   }, []);
 
   const value = useMemo(
-    () => ({ screen, params, navigate, currentDevice, openDevice, recentScans, toast, showToast }),
-    [screen, params, navigate, currentDevice, openDevice, recentScans, toast, showToast]
+    () => ({
+      screen,
+      params,
+      navigate,
+      currentDevice,
+      currentDeviceSource,
+      openDevice,
+      recentScans,
+      toast,
+      showToast,
+    }),
+    [
+      screen,
+      params,
+      navigate,
+      currentDevice,
+      currentDeviceSource,
+      openDevice,
+      recentScans,
+      toast,
+      showToast,
+    ]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

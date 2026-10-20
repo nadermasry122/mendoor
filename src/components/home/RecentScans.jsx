@@ -6,9 +6,9 @@ export function RecentScans({ items = [], onOpen }) {
   if (items.length === 0) {
     return (
       <div className="empty-box">
-        Noch keine gescannten Geräte.
+        Noch keine Geräte.
         <br />
-        Scanne dein erstes Gerät oben.
+        Scanne ein Typenschild oder gib ein Modell manuell ein.
       </div>
     );
   }

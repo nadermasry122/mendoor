@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestAiGuide } from '../../lib/api.js';
+import { getSavedAi, makeSavedAiId, removeSavedAi, saveAiResult } from '../../lib/savedAi.js';
 import { Icon } from '../ui/Icon.jsx';
 import { FormattedText } from '../ui/FormattedText.jsx';
 
@@ -35,9 +36,19 @@ export function AiPanel({ device }) {
   const [status, setStatus] = useState('idle');
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const abortRef = useRef(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    setStatus('idle');
+    setData(null);
+    setError(null);
+    setSaveError(null);
+    setSaved(Boolean(getSavedAi(makeSavedAiId(device))));
+  }, [device]);
 
   const run = useCallback(async () => {
     abortRef.current?.abort();
@@ -46,11 +57,14 @@ export function AiPanel({ device }) {
 
     setStatus('loading');
     setError(null);
+    setSaveError(null);
 
     try {
       const result = await requestAiGuide(device, { signal: controller.signal });
       if (controller.signal.aborted) return;
+      const existing = getSavedAi(makeSavedAiId(device));
       setData(result);
+      setSaved(Boolean(existing && existing.answer === result.answer));
       setStatus('ready');
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -58,6 +72,29 @@ export function AiPanel({ device }) {
       setStatus('error');
     }
   }, [device]);
+
+  const toggleSaved = useCallback(() => {
+    const id = makeSavedAiId(device);
+    setSaveError(null);
+
+    if (saved) {
+      removeSavedAi(id);
+      setSaved(false);
+      return;
+    }
+
+    try {
+      saveAiResult({
+        device,
+        answer: data?.answer || '',
+        sources: data?.sources || [],
+        model: data?.model || null,
+      });
+      setSaved(true);
+    } catch (err) {
+      setSaveError(err.message || 'Speichern nicht möglich.');
+    }
+  }, [data, device, saved]);
 
   const sources = Array.isArray(data?.sources) ? data.sources : [];
   const hasAnswer = typeof data?.answer === 'string' && data.answer.trim().length > 0;
@@ -134,9 +171,17 @@ export function AiPanel({ device }) {
             </div>
           )}
 
-          <button className="btn btn--ghost ai-panel__action" onClick={run}>
-            Neu erstellen
-          </button>
+          <div className="ai-panel__actions">
+            <button className="btn btn--ghost" onClick={toggleSaved}>
+              <Icon name={saved ? 'trash' : 'save'} size={16} />
+              {saved ? 'Gespeichert – entfernen' : 'Auf Gerät speichern'}
+            </button>
+            <button className="btn btn--ghost" onClick={run}>
+              Neu erstellen
+            </button>
+          </div>
+
+          {saveError && <p className="ai-panel__save-error">{saveError}</p>}
         </div>
       )}
 

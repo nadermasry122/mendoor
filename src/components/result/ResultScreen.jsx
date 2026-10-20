@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext.jsx';
+import { searchGuidesForDevice } from '../../lib/api.js';
+import { useAsyncData } from '../../hooks/useAsyncData.js';
 import { BottomNav } from '../ui/BottomNav.jsx';
 import { BackButton } from '../ui/ScreenHeader.jsx';
 import { Disclosure } from '../ui/Disclosure.jsx';
@@ -12,7 +14,11 @@ import { ArchivePanel } from './ArchivePanel.jsx';
 import { WebSearchPanel } from './WebSearchPanel.jsx';
 
 export function ResultScreen() {
-  const { currentDevice, navigate, showToast } = useApp();
+  const { currentDevice, currentDeviceSource, navigate, showToast } = useApp();
+  const { status: guidesStatus, data: guides } = useAsyncData(
+    () => searchGuidesForDevice(currentDevice),
+    [currentDevice]
+  );
   // Immer nur ein Disclosure-Bereich zugleich geöffnet (Apple-HIG-Muster).
   const [openPanel, setOpenPanel] = useState(null);
   const toggle = (id) => setOpenPanel((cur) => (cur === id ? null : id));
@@ -33,8 +39,13 @@ export function ResultScreen() {
       </header>
 
       <div className="scroll">
-        <ProductCard device={currentDevice} />
-        <ScoreRow />
+        <ProductCard
+          device={currentDevice}
+          source={currentDeviceSource}
+          guideCount={guides.length}
+          guideStatus={guidesStatus}
+        />
+        <ScoreRow guides={guides} status={guidesStatus} />
 
         <div className="section-label">Produktbeschreibung</div>
 
