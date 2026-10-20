@@ -35,7 +35,6 @@ export function ResultScreen() {
       <div className="scroll">
         <ProductCard device={currentDevice} />
         <ScoreRow />
-        <AiPanel device={currentDevice} />
 
         <div className="section-label">Produktbeschreibung</div>
 
@@ -90,6 +89,18 @@ export function ResultScreen() {
             onToggle={toggle}
           >
             <WebSearchPanel device={currentDevice} active={openPanel === 'websearch'} />
+          </Disclosure>
+
+          <Disclosure
+            id="ai"
+            icon="sparkle"
+            title="KI-Einschätzung"
+            subtitle="Optional: Quellen zusammenfassen"
+            open={openPanel === 'ai'}
+            onToggle={toggle}
+            className="disclosure--ai"
+          >
+            <AiPanel device={currentDevice} />
           </Disclosure>
 
           <MenuItem

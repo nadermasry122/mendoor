@@ -4,12 +4,12 @@ import { Icon } from '../ui/Icon.jsx';
 import { FormattedText } from '../ui/FormattedText.jsx';
 
 /*
- * KI-Kachel auf dem Ergebnis-Screen (ADR D6/D7).
+ * Inhalt der optionalen KI-Kachel (ADR D6/D7).
  *
- * Die Kachel ruft bewusst nicht automatisch beim Mounten auf: Jeder
- * Aufruf kostet Neurons und trifft mehrere externe Quellen. Der Button
- * startet die serverseitige RAG-Kette; die Antwort ist ausschließlich
- * aus den abgerufenen Quellen zu belegen.
+ * Die Kachel ist bewusst in ein Disclosure eingebettet und startet nicht
+ * automatisch: Jeder Aufruf kostet Neurons und trifft mehrere externe
+ * Quellen. Der Button startet die serverseitige RAG-Kette; die Antwort ist
+ * ausschließlich aus den abgerufenen Quellen zu belegen.
  */
 const SOURCE_LABELS = {
   ifixit: 'iFixit',
@@ -63,31 +63,22 @@ export function AiPanel({ device }) {
   const hasAnswer = typeof data?.answer === 'string' && data.answer.trim().length > 0;
 
   return (
-    <section className="ai-card" aria-labelledby="ai-card-title" aria-live="polite">
-      <div className="ai-card__head">
-        <span className="ai-card__icon" aria-hidden="true">
-          <Icon name="sparkle" size={22} weight="fill" />
-        </span>
-        <div className="ai-card__intro">
-          <span className="ai-card__eyebrow">KI-Assistenz · quellenbasiert</span>
-          <h2 id="ai-card-title">Was sagt die Quellenlage?</h2>
-          <p>
-            Fasst iFixit, Internet Archive und Websuche zu einer belegten Einschätzung
-            für „{device}“ zusammen.
-          </p>
-        </div>
-      </div>
+    <div className="ai-panel" aria-live="polite">
+      <p className="ai-panel__note">
+        Optional: Fasst die Quellen zu einer belegten Einschätzung zusammen. Jeder Aufruf
+        startet eine externe KI-Anfrage.
+      </p>
 
       {status === 'idle' && (
-        <button className="btn btn--primary btn--block ai-card__action" onClick={run}>
+        <button className="btn btn--primary ai-panel__action" onClick={run}>
           <Icon name="sparkle" size={16} weight="fill" />
           Einschätzung erstellen
         </button>
       )}
 
       {status === 'loading' && (
-        <div className="ai-card__loading">
-          <span className="ai-card__spinner" aria-hidden="true" />
+        <div className="ai-panel__loading">
+          <span className="ai-panel__spinner" aria-hidden="true" />
           <div>
             <strong>Quellen werden ausgewertet …</strong>
             <p>iFixit, Archiv und Websuche werden abgerufen und belegt zusammengefasst.</p>
@@ -96,7 +87,7 @@ export function AiPanel({ device }) {
       )}
 
       {status === 'error' && (
-        <div className="ai-card__error">
+        <div className="ai-panel__error">
           <Icon name="wifiOff" size={20} />
           <p>{errorText(error)}</p>
           <button className="btn btn--ghost" onClick={run}>
@@ -106,7 +97,7 @@ export function AiPanel({ device }) {
       )}
 
       {status === 'ready' && !hasAnswer && (
-        <div className="ai-card__error">
+        <div className="ai-panel__error">
           <Icon name="search" size={20} />
           <p>
             Für „{device}“ wurden keine ausreichenden Quellen gefunden. Die Quellenlisten
@@ -119,22 +110,22 @@ export function AiPanel({ device }) {
       )}
 
       {status === 'ready' && hasAnswer && (
-        <div className="ai-card__result">
-          <div className="ai-card__answer">
+        <div className="ai-panel__result">
+          <div className="ai-panel__answer">
             <FormattedText value={data.answer} block />
           </div>
 
           {sources.length > 0 && (
-            <div className="ai-card__sources">
+            <div className="ai-panel__sources">
               <h3>Bereitgestellte Quellen</h3>
               <ul>
                 {sources.map((source) => (
                   <li key={`${source.id}-${source.url}`}>
-                    <span className="ai-card__source-id">[{source.id}]</span>
+                    <span className="ai-panel__source-id">[{source.id}]</span>
                     <a href={source.url} target="_blank" rel="noopener noreferrer">
                       {source.title}
                     </a>
-                    <span className="ai-card__source-type">
+                    <span className="ai-panel__source-type">
                       {SOURCE_LABELS[source.type] || source.type}
                     </span>
                   </li>
@@ -143,16 +134,16 @@ export function AiPanel({ device }) {
             </div>
           )}
 
-          <button className="btn btn--ghost ai-card__action" onClick={run}>
+          <button className="btn btn--ghost ai-panel__action" onClick={run}>
             Neu erstellen
           </button>
         </div>
       )}
 
-      <p className="ai-card__disclaimer">
+      <p className="ai-panel__disclaimer">
         KI-generiert auf Basis der verlinkten Quellen. Keine Garantie auf Vollständigkeit;
         bei Akku, Netzspannung oder Unsicherheit eine Fachperson hinzuziehen.
       </p>
-    </section>
+    </div>
   );
 }

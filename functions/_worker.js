@@ -316,23 +316,48 @@ async function handleWebSearch(request, env) {
    erst dann das Modell aufrufen. Ohne Quellen keine generative Antwort.
    ══════════════════════════════════════════════ */
 async function handleAi(request, env) {
-  if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed. Use POST.' }, 405);
-  }
-
   const url = new URL(request.url);
   const debug = url.searchParams.get('debug') === '1';
+  let device = '';
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: 'Invalid JSON body' }, 400);
-  }
-
-  const device = normalizeDevice(body && body.device);
-  if (!device) {
-    return json({ error: 'Missing or invalid "device" field' }, 400);
+  if (request.method === 'GET') {
+    device = normalizeDevice(url.searchParams.get('device'));
+    if (!device) {
+      return json(
+        {
+          error: 'Missing "device" query parameter',
+          hint: 'Use POST with JSON { "device": "..." } for an AI answer. Debug: GET /api/ai?device=iPhone%2014&debug=1'
+        },
+        400
+      );
+    }
+    if (!debug) {
+      return json(
+        {
+          error: 'GET is only supported for debug=1',
+          hint: 'Use POST with JSON { "device": "..." } for an AI answer.'
+        },
+        405,
+        { Allow: 'POST' }
+      );
+    }
+  } else if (request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: 'Invalid JSON body' }, 400);
+    }
+    device = normalizeDevice(body && body.device);
+    if (!device) {
+      return json({ error: 'Missing or invalid "device" field' }, 400);
+    }
+  } else {
+    return json(
+      { error: 'Method not allowed. Use POST (or GET with ?debug=1).' },
+      405,
+      { Allow: 'POST, GET' }
+    );
   }
 
   // Retrieval darf auch im Debug-Modus ohne AI-Binding laufen.

@@ -6,9 +6,9 @@ import { Icon } from './Icon.jsx';
  * Zustand wird vom übergeordneten Screen gehalten, sodass immer nur ein
  * Bereich zugleich geöffnet ist.
  */
-export function Disclosure({ id, icon, title, subtitle, open, onToggle, children }) {
+export function Disclosure({ id, icon, title, subtitle, open, onToggle, children, className = '' }) {
   return (
-    <div className="disclosure" data-open={open ? 'true' : 'false'}>
+    <div className={`disclosure${className ? ` ${className}` : ''}`} data-open={open ? 'true' : 'false'}>
       <button className="menu-item" onClick={() => onToggle(id)} aria-expanded={open}>
         <span className="menu-item__icon" aria-hidden="true">
           <Icon name={icon} size={20} />
