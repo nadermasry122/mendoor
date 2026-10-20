@@ -6,6 +6,7 @@ import { Disclosure } from '../ui/Disclosure.jsx';
 import { MenuItem } from '../ui/MenuItem.jsx';
 import { ProductCard } from './ProductCard.jsx';
 import { ScoreRow } from './ScoreRow.jsx';
+import { AiPanel } from './AiPanel.jsx';
 import { CommunityPanel } from './CommunityPanel.jsx';
 import { ArchivePanel } from './ArchivePanel.jsx';
 import { WebSearchPanel } from './WebSearchPanel.jsx';
@@ -34,6 +35,7 @@ export function ResultScreen() {
       <div className="scroll">
         <ProductCard device={currentDevice} />
         <ScoreRow />
+        <AiPanel device={currentDevice} />
 
         <div className="section-label">Produktbeschreibung</div>
 

@@ -9,6 +9,7 @@ const IFIXIT_API = 'https://www.ifixit.com/api/2.0';
 const VISION_ENDPOINT = '/api/vision';
 const ARCHIVE_ENDPOINT = '/api/archive';
 const WEBSEARCH_ENDPOINT = '/api/websearch';
+const AI_ENDPOINT = '/api/ai';
 
 /* Debug-Modus: ?debug=1 in der URL. */
 export const DEBUG_MODE =
@@ -91,6 +92,26 @@ export async function searchWeb(device) {
   if (!res.ok) throw new Error(`Websearch API ${res.status}`);
   const data = await res.json();
   return Array.isArray(data.items) ? data.items : [];
+}
+
+/* ── KI-Assistenz: RAG + Workers AI (ADR D6/D7) ── */
+export async function requestAiGuide(device, { signal } = {}) {
+  const resp = await fetch(AI_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device }),
+    signal,
+  });
+
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const e = new Error(data.error || `HTTP ${resp.status}`);
+    e.httpStatus = resp.status;
+    e.code = data.code || null;
+    e.detail = data.detail || null;
+    throw e;
+  }
+  return data;
 }
 
 /* Fallback: site-beschränkte Google-Suche (Link-out statt API). */

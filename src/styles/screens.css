@@ -567,6 +567,137 @@
 .score-pill__lbl { margin-top: 3px; font-size: var(--fs-xs); color: var(--c-muted); }
 .score-pill--alt .score-pill__val { color: var(--c-muted); }
 
+/* KI-Kachel (ADR D6/D7): quellenbasierte Assistenz auf dem Ergebnis-Screen */
+.ai-card {
+  margin: 0 var(--pad) var(--gap);
+  padding: var(--sp-5);
+  border: 1px solid color-mix(in srgb, var(--c-primary) 22%, transparent);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, var(--c-primary-dim), transparent 55%),
+    var(--c-surface);
+  box-shadow: var(--shadow-1);
+}
+.ai-card__head { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.ai-card__icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-primary);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px var(--c-primary-glow);
+}
+.ai-card__intro { min-width: 0; }
+.ai-card__eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-primary);
+}
+.ai-card__intro h2 { font-size: var(--fs-h3); font-weight: 700; line-height: 1.3; }
+.ai-card__intro p { margin-top: 4px; font-size: var(--fs-small); color: var(--c-muted); line-height: 1.45; }
+.ai-card__action { margin-top: var(--sp-4); }
+.ai-card__loading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--radius-sm);
+  background: var(--c-elevated);
+}
+.ai-card__spinner {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid var(--c-border-strong);
+  border-top-color: var(--c-primary);
+  animation: spin 0.8s linear infinite;
+}
+.ai-card__loading strong { font-size: var(--fs-small); }
+.ai-card__loading p { margin-top: 2px; font-size: var(--fs-xs); color: var(--c-muted); line-height: 1.4; }
+.ai-card__error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--radius-sm);
+  background: var(--c-elevated);
+  color: var(--c-text-2);
+}
+.ai-card__error > svg { color: var(--c-muted); }
+.ai-card__error p { font-size: var(--fs-small); line-height: 1.45; }
+.ai-card__result { margin-top: var(--sp-4); }
+.ai-card__answer { font-size: var(--fs-body); line-height: 1.55; color: var(--c-text); }
+.ai-card__answer .rich-text h3,
+.ai-card__answer .rich-text h4 {
+  margin: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.ai-card__answer .rich-text h4 { font-size: var(--fs-body); }
+.ai-card__answer .rich-text p { margin-bottom: var(--sp-2); }
+.ai-card__sources {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border);
+}
+.ai-card__sources h3 {
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+}
+.ai-card__sources ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.ai-card__sources li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--fs-small);
+  line-height: 1.35;
+}
+.ai-card__source-id {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-primary);
+  font-weight: 700;
+}
+.ai-card__sources a {
+  color: var(--c-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.ai-card__sources a:hover { color: var(--c-primary); }
+.ai-card__source-type {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 100px;
+  background: var(--c-elevated);
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+}
+.ai-card__disclaimer {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--c-muted);
+}
+
 /* Panels (Community / Archiv / Websuche) */
 .panel-note { margin-bottom: 10px; font-size: var(--fs-xs); color: var(--c-muted); line-height: 1.4; }
 .subreddit-card { width: clamp(150px, 40vw, 185px); }
@@ -897,6 +1028,7 @@
   .section-title,
   .product-card,
   .score-row,
+  .ai-card,
   .menu-list {
     max-width: 640px;
     margin-left: auto;

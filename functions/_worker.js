@@ -1,5 +1,16 @@
 // mendooR Worker – routes /api/* to serverless functions, everything else to static files.
 // Requires Secrets Store bindings named GOOGLE_VISION_API_KEY and TAVILY_API_KEY (see wrangler.jsonc).
+// KI-Assistenz: Workers-AI-Binding `AI` (ADR D6/D7).
+
+import { searchArchiveItems, searchWebItems } from './sources.js';
+import {
+  AI_MODEL,
+  AI_REQUEST_OPTIONS,
+  buildMessages,
+  extractAnswer,
+  normalizeDevice,
+  retrieveSources
+} from './rag.js';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -49,6 +60,11 @@ export default {
     // ── Tavily web search (trusted-domain articles) ──
     if (url.pathname === '/api/websearch') {
       return handleWebSearch(request, env);
+    }
+
+    // ── RAG + Workers AI assistance ──
+    if (url.pathname === '/api/ai') {
+      return handleAi(request, env);
     }
 
     // ── Everything else → static files ──
@@ -209,11 +225,11 @@ async function handleVision(request, env) {
   });
 }
 
-/* Helper — JSON response with CORS headers */
-function json(payload, status = 200) {
+/* Helper — JSON response with CORS headers (optional extra headers) */
+function json(payload, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS }
+    headers: { 'Content-Type': 'application/json', ...CORS, ...extraHeaders }
   });
 }
 
@@ -240,45 +256,15 @@ async function handleArchive(request) {
     return json({ error: 'Missing query parameter "q"' }, 400);
   }
 
-  // Restrict to scanned text documents (manuals, catalogs) rather than
-  // audio/video/software, and require the term to appear in the title
-  // for relevance rather than matching any metadata field.
-  const query = `title:(${q}) AND mediatype:texts`;
-
-  const archiveUrl =
-    `https://archive.org/advancedsearch.php` +
-    `?q=${encodeURIComponent(query)}` +
-    `&fl[]=identifier&fl[]=title&fl[]=year&fl[]=description` +
-    `&rows=12&page=1&output=json`;
-
-  let resp;
   try {
-    resp = await fetch(archiveUrl, { headers: { 'Accept': 'application/json' } });
+    const items = await searchArchiveItems(q);
+    return json({ query: q, count: items.length, items });
   } catch (err) {
-    return json({ error: 'Archive.org unreachable', detail: err.message }, 502);
+    return json(
+      { error: err.message || 'Archive.org error', detail: err.detail },
+      err.status || 502
+    );
   }
-
-  if (!resp.ok) {
-    return json({ error: `Archive.org error ${resp.status}` }, resp.status);
-  }
-
-  const data = await resp.json().catch(() => null);
-  const docs = data?.response?.docs;
-  if (!Array.isArray(docs)) {
-    return json({ error: 'Unexpected Archive.org response' }, 502);
-  }
-
-  const items = docs
-    .filter(d => d && d.identifier && d.title)
-    .map(d => ({
-      identifier: d.identifier,
-      title:      d.title,
-      year:       d.year || null,
-      url:        `https://archive.org/details/${d.identifier}`,
-      thumbnail:  `https://archive.org/services/img/${d.identifier}`
-    }));
-
-  return json({ query: q, count: items.length, items });
 }
 
 /* ══════════════════════════════════════════════
@@ -300,15 +286,6 @@ async function handleArchive(request) {
 
    Query:  /api/websearch?q=iPhone+14+Pro
    ══════════════════════════════════════════════ */
-const TRUSTED_DOMAINS = [
-  'computerbase.de',
-  'chip.de',
-  'notebookcheck.net',
-  'heise.de',
-  'golem.de',
-  'pcwelt.de'
-];
-
 async function handleWebSearch(request, env) {
   const url = new URL(request.url);
   const q = (url.searchParams.get('q') || '').trim();
@@ -317,55 +294,147 @@ async function handleWebSearch(request, env) {
     return json({ error: 'Missing query parameter "q"' }, 400);
   }
 
-  // Read the secret from the Secrets Store binding
-  let apiKey;
   try {
-    apiKey = await env.TAVILY_API_KEY.get();
+    const items = await searchWebItems(q, env);
+    return json({ query: q, count: items.length, items });
   } catch (err) {
-    return json({ error: 'API key not configured', detail: err.message }, 500);
+    return json(
+      { error: err.message || 'Tavily error', detail: err.detail },
+      err.status || 502
+    );
   }
-  if (!apiKey) {
-    return json({ error: 'API key empty' }, 500);
+}
+
+/* ══════════════════════════════════════════════
+   /api/ai – RAG + Workers AI (ADR D6/D7)
+
+   Body: { "device": "iPhone 14" }
+   Query: ?debug=1 liefert nur Retrieval + Prompt, ohne AI-Aufruf.
+
+   Ablauf: Quellen serverseitig abrufen (iFixit, Archiv, Tavily),
+   normalisieren/begrenzen, strikt quellengebundenen Prompt bauen und
+   erst dann das Modell aufrufen. Ohne Quellen keine generative Antwort.
+   ══════════════════════════════════════════════ */
+async function handleAi(request, env) {
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed. Use POST.' }, 405);
   }
 
-  // "Reparatur" biases results toward repair content — the trusted
-  // domains cover general tech news too, not just repairs.
-  const tavilyBody = {
-    query: `${q} Reparatur`,
-    search_depth: 'basic',       // "advanced" costs 2 credits per call instead of 1
-    max_results: 8,
-    include_domains: TRUSTED_DOMAINS
-  };
+  const url = new URL(request.url);
+  const debug = url.searchParams.get('debug') === '1';
 
-  let tavilyResp;
+  let body;
   try {
-    tavilyResp = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,   // NOT api_key in the body — that form is deprecated
-        'Content-Type': 'application/json'
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const device = normalizeDevice(body && body.device);
+  if (!device) {
+    return json({ error: 'Missing or invalid "device" field' }, 400);
+  }
+
+  // Retrieval darf auch im Debug-Modus ohne AI-Binding laufen.
+  if (!debug && !env.AI) {
+    return json(
+      { error: 'Workers AI binding not configured', code: 'AI_BINDING_MISSING' },
+      503,
+      { 'Cache-Control': 'no-store' }
+    );
+  }
+
+  let retrieval;
+  try {
+    retrieval = await retrieveSources(device, env);
+  } catch (err) {
+    return json(
+      { error: 'Source retrieval failed', detail: err.message },
+      502,
+      { 'Cache-Control': 'no-store' }
+    );
+  }
+
+  const { query, sources, errors } = retrieval;
+
+  if (debug) {
+    return json(
+      {
+        debug: true,
+        model: AI_MODEL,
+        query,
+        sources,
+        errors,
+        messages: sources.length > 0 ? buildMessages(device, sources) : []
       },
-      body: JSON.stringify(tavilyBody)
+      200,
+      { 'Cache-Control': 'no-store' }
+    );
+  }
+
+  if (sources.length === 0) {
+    return json(
+      { answer: null, reason: 'no_sources', query, sources: [], errors },
+      200,
+      { 'Cache-Control': 'no-store' }
+    );
+  }
+
+  const messages = buildMessages(device, sources);
+
+  let result;
+  let timeoutTimer;
+  try {
+    const timeout = new Promise((_, reject) => {
+      timeoutTimer = setTimeout(() => reject(new Error('AI timeout after 30s')), 30000);
     });
+
+    // Primär mit gpt-oss-Reasoning; falls die Laufzeit den optionalen
+    // Parameter ablehnt, einmal ohne ihn wiederholen.
+    const aiCall = (async () => {
+      try {
+        return await env.AI.run(AI_MODEL, { messages, ...AI_REQUEST_OPTIONS });
+      } catch (err) {
+        if (!/reasoning|unsupported|invalid|unexpected/i.test(err.message || '')) throw err;
+        return env.AI.run(AI_MODEL, { messages, max_tokens: 800, temperature: 0.2 });
+      }
+    })();
+
+    result = await Promise.race([aiCall, timeout]);
   } catch (err) {
-    return json({ error: 'Tavily unreachable', detail: err.message }, 502);
+    const timeout = /timeout/i.test(err.message || '');
+    return json(
+      {
+        error: timeout ? 'Workers AI timeout' : 'Workers AI request failed',
+        code: timeout ? 'AI_TIMEOUT' : 'AI_ERROR',
+        detail: err.message
+      },
+      timeout ? 504 : 502,
+      { 'Cache-Control': 'no-store' }
+    );
+  } finally {
+    clearTimeout(timeoutTimer);
   }
 
-  if (!tavilyResp.ok) {
-    const errText = await tavilyResp.text().catch(() => '');
-    return json({ error: `Tavily error ${tavilyResp.status}`, detail: errText.slice(0, 300) }, tavilyResp.status);
+  const answer = extractAnswer(result);
+  if (!answer) {
+    return json(
+      { error: 'Empty AI response', code: 'AI_EMPTY' },
+      502,
+      { 'Cache-Control': 'no-store' }
+    );
   }
 
-  const data = await tavilyResp.json().catch(() => null);
-  const results = Array.isArray(data?.results) ? data.results : [];
-
-  const items = results
-    .filter(r => r && r.url)
-    .map(r => ({
-      title:   r.title || 'Ohne Titel',
-      url:     r.url,
-      snippet: (r.content || '').slice(0, 220)
-    }));
-
-  return json({ query: q, count: items.length, items });
+  return json(
+    {
+      answer,
+      model: AI_MODEL,
+      query,
+      sources: sources.map(({ id, type, title, url, meta }) => ({ id, type, title, url, meta })),
+      retrievedAt: new Date().toISOString(),
+      usage: result && result.usage ? result.usage : null
+    },
+    200,
+    { 'Cache-Control': 'no-store' }
+  );
 }
