@@ -6,19 +6,11 @@ import { CategoryChips } from './CategoryChips.jsx';
 import { ScannerBox } from './ScannerBox.jsx';
 import { RecentScans } from './RecentScans.jsx';
 import { InspirationRow } from './InspirationRow.jsx';
-import { Icon } from '../ui/Icon.jsx';
-import { formatSavedDate, loadSavedAi } from '../../lib/savedAi.js';
 
 export function HomeScreen() {
-  const { navigate, openDevice, recentScans, showToast } = useApp();
-  const savedAi = loadSavedAi();
+  const { navigate, recentScans, showToast } = useApp();
 
   const openScanner = () => navigate('scanner');
-
-  const handleOpenRecent = (item) => {
-    if (item?.name) openDevice(item.name, item.source || 'ocr');
-    navigate('result');
-  };
 
   const handleNav = (target) => {
     if (target === 'home') navigate('home');
@@ -56,33 +48,9 @@ export function HomeScreen() {
         </section>
 
         <section className="sec-block">
-          <h2 className="section-title">Zuletzt verwendet</h2>
-          <RecentScans items={recentScans} onOpen={handleOpenRecent} />
+          <h2 className="section-title">Zuletzt gescannt</h2>
+          <RecentScans items={recentScans} onOpen={() => navigate('result')} />
         </section>
-
-        {savedAi.length > 0 && (
-          <section className="sec-block">
-            <h2 className="section-title">Gespeicherte KI-Einschätzungen</h2>
-            <div>
-              {savedAi.map((item) => (
-                <button
-                  key={item.id}
-                  className="recent-item"
-                  onClick={() => navigate('savedAiDetail', { savedId: item.id })}
-                >
-                  <span className="recent-item__icon" aria-hidden="true">
-                    <Icon name="sparkle" size={20} />
-                  </span>
-                  <span className="recent-item__body">
-                    <strong>{item.device}</strong>
-                    <span>{formatSavedDate(item.savedAt)}</span>
-                  </span>
-                  <Icon name="chevronRight" size={16} weight="bold" className="recent-item__chevron" />
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
 
         <section className="sec-block">
           <h2 className="section-title">Inspiration</h2>

@@ -1,39 +1,19 @@
-import { mapDifficulty } from '../../lib/search.js';
+const SCORES = [
+  { value: '87%', label: 'Reparierbar', alt: false },
+  { value: '62g', label: 'Metalle', alt: true },
+  { value: '0.3g', label: 'Gold', alt: true },
+];
 
-/*
- * Kompakte Quellenlage statt statischer Materialschätzungen.
- * Die Werte stammen aus den tatsächlich geladenen iFixit-Treffern.
- */
-export function ScoreRow({ guides = [], status = 'idle' }) {
-  if (status === 'idle' || status === 'loading') {
-    return <div className="source-strip source-strip--muted">Quellen werden geprüft …</div>;
-  }
-  if (status === 'error') {
-    return <div className="source-strip source-strip--muted">Quellenlage nicht verfügbar</div>;
-  }
-
-  const count = guides.length;
-  const levels = guides.map((guide) => mapDifficulty(guide.difficulty)).filter(Boolean);
-  const easiest =
-    levels.find((level) => level.level === 'easy') ||
-    levels.find((level) => level.level === 'medium') ||
-    levels[0] ||
-    null;
-  const levelLabel = easiest ? easiest.label : '–';
-
+/* Kennzahlen-Reihe auf dem Ergebnis-Screen (Platzhalterdaten). */
+export function ScoreRow() {
   return (
-    <div className="source-strip" aria-label="Quellenlage">
-      <span className="source-strip__item">
-        <strong>{count}</strong> {count === 1 ? 'Anleitung' : 'Anleitungen'}
-      </span>
-      <span className="source-strip__sep" aria-hidden="true" />
-      <span className="source-strip__item">
-        <strong>{levelLabel}</strong> Niveau
-      </span>
-      <span className="source-strip__sep" aria-hidden="true" />
-      <span className="source-strip__item">
-        <strong>{count > 0 ? 'iFixit' : '–'}</strong> Quelle
-      </span>
+    <div className="score-row">
+      {SCORES.map((s) => (
+        <div key={s.label} className={`score-pill ${s.alt ? 'score-pill--alt' : ''}`}>
+          <div className="score-pill__val">{s.value}</div>
+          <div className="score-pill__lbl">{s.label}</div>
+        </div>
+      ))}
     </div>
   );
 }

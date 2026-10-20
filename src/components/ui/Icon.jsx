@@ -31,8 +31,6 @@ import { Clock } from '@phosphor-icons/react/dist/csr/Clock';
 import { Bug } from '@phosphor-icons/react/dist/csr/Bug';
 import { Keyboard } from '@phosphor-icons/react/dist/csr/Keyboard';
 import { Sparkle } from '@phosphor-icons/react/dist/csr/Sparkle';
-import { FloppyDisk } from '@phosphor-icons/react/dist/csr/FloppyDisk';
-import { Trash } from '@phosphor-icons/react/dist/csr/Trash';
 
 /*
  * Zentrale Icon-Fassade (ADR C10): semantischer Name → Phosphor-Komponente.
@@ -85,8 +83,6 @@ const ICONS = {
   recycle: Recycle,
   // KI-Assistenz
   sparkle: Sparkle,
-  save: FloppyDisk,
-  trash: Trash,
   // Zustände
   search: MagnifyingGlass,
   wifiOff: WifiSlash,

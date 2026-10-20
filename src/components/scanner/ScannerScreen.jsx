@@ -94,10 +94,8 @@ export function ScannerScreen() {
       showToast('Bitte ein Modell eingeben');
       return;
     }
-    const hasCandidates = Array.isArray(sheet?.candidates) && sheet.candidates.length > 0;
-    const source = sheet?.manual || !hasCandidates ? 'manual' : 'ocr';
     setSheet(null);
-    openDevice(device, source);
+    openDevice(device);
     navigate('result');
   };
 
