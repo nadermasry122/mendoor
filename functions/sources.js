@@ -32,7 +32,9 @@ export function bestSearchTerm(deviceName) {
   if (tokens.length <= 1) return clean;
 
   const kept = tokens.filter((t) => !isModelCodeToken(t));
-  if (kept.length === 0) return clean;
+  /* Nur noch ein Wort übrig (meist die Marke): Der Code ist dann der
+     einzige gerätespezifische Bestandteil und bleibt erhalten. */
+  if (kept.length <= 1) return clean;
   return kept.slice(0, 4).join(' ');
 }
 
@@ -227,6 +229,61 @@ export const TRUSTED_DOMAINS = [
   'pcwelt.de',
 ];
 
+/*
+ * Die vertrauenswürdigen Tech-Domains liefern viel Produktjournalismus
+ * (Tests, Preisvergleiche, Angebote) und nur selten gerätespezifische
+ * Reparaturhinweise. Ohne Filter landen solche Seiten als „Web-Quelle“
+ * im RAG-Prompt und die KI fasst dann Tests oder Preise statt Reparaturen
+ * zusammen. Deshalb: Gerät muss im Titel/URL stehen, der Titel muss
+ * Reparaturabsicht signalisieren, und reine Test-/Preis-/Suchseiten
+ * fliegen raus.
+ */
+const WEB_REPAIR_HINT = /(reparatur|instandsetzung|repair|defekt|fehler|anleitung|zerleg|auseinanderbau|austausch|auswechseln|ersetzen|akku|batterie|display|bildschirm|problem|beheben|wartung|diagnose|\bfix\b|how\s+to)/i;
+const WEB_NOISE_TITLE = /(\bim test\b|testbericht|preisvergleich|\bab \d+[.,]\d+\s*€|kaufen|bestellen|angebot|deal|schnäppchen|\bsearch\b|\bsuche\b)/i;
+const WEB_NOISE_URL = /(^|\/)(search|suche)(\/|$)|preisvergleich/i;
+
+/* Für Web-Treffer zählen auch Modellzusätze wie Pro/Max/Ultra, damit
+   „iPhone 14 Pro“ nicht durch einen „iPhone 14 Plus“-Artikel ersetzt wird. */
+const WEB_STOP_TOKENS = new Set([
+  'der', 'die', 'das', 'und', 'für', 'fur', 'mit', 'von', 'the', 'and', 'for', 'with',
+  'model', 'modell', 'typ', 'type', 'guide', 'anleitung', 'repair', 'reparatur',
+  'replacement', 'austausch', 'series', 'serie',
+]);
+
+function webQueryTokens(query) {
+  return String(query || '')
+    .toLowerCase()
+    .split(/[^a-z0-9äöüß]+/)
+    .filter((token) => token && !WEB_STOP_TOKENS.has(token) && (token.length >= 2 || /^\d$/.test(token)));
+}
+
+function isRelevantWebResult(query, result) {
+  const title = stripHtml(result.title);
+  if (!title) return false;
+  if (WEB_NOISE_URL.test(result.url || '')) return false;
+  if (!WEB_REPAIR_HINT.test(title)) return false;
+  if (WEB_NOISE_TITLE.test(title)) return false;
+
+  const tokens = webQueryTokens(query);
+  if (tokens.length === 0) return true;
+  /* Bewusst nur der Titel: Snippets enthalten oft Gerätelisten oder
+     Werbetexte, die einen Treffer nur vortäuschen. Token-Vergleich statt
+     substring, damit „Pro“ nicht in „Problem“ matcht; lange Codes dürfen
+     auch zusammengeschrieben im Titel stehen (WH1000XM4). */
+  const titleLower = title.toLowerCase();
+  let urlLower = '';
+  try {
+    urlLower = decodeURIComponent(String(result.url || '')).toLowerCase();
+  } catch {
+    urlLower = String(result.url || '').toLowerCase();
+  }
+  const haystack = `${titleLower} ${urlLower}`;
+  const haystackTokens = new Set(haystack.split(/[^a-z0-9äöüß]+/).filter(Boolean));
+  return tokens.every(
+    (token) => haystackTokens.has(token) || (token.length >= 5 && haystack.includes(token))
+  );
+}
+
 export async function searchWebItems(query, env) {
   let apiKey;
   try {
@@ -269,6 +326,7 @@ export async function searchWebItems(query, env) {
 
   return results
     .filter((r) => r && r.url && r.title && /^https?:\/\//i.test(r.url))
+    .filter((r) => isRelevantWebResult(query, r))
     .slice(0, 8)
     .map((r) => ({
       title: stripHtml(r.title),

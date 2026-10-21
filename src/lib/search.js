@@ -14,6 +14,10 @@ export function isModelCodeToken(token) {
  * bestSearchTerm — baut EINEN guten ausgehenden Suchbegriff aus einem
  * Gerätenamen. Nur intern anmutende Codes werden verworfen; kurze
  * Alphanumerik („A11“), Zahlen und Wörter bleiben erhalten.
+ *
+ * Bleibt neben dem Code nur noch ein einziges Wort übrig („Sony
+ * WH-1000XM4“ → „Sony“), wird der Code behalten: Die Marke allein ist
+ * für die Websuche zu unspezifisch und liefert sonst fremde Geräte.
  */
 export function bestSearchTerm(deviceName) {
   const clean = deviceName.trim().replace(/\s+/g, ' ');
@@ -21,7 +25,7 @@ export function bestSearchTerm(deviceName) {
   if (tokens.length <= 1) return clean;
 
   const kept = tokens.filter((t) => !isModelCodeToken(t));
-  if (kept.length === 0) return clean;
+  if (kept.length <= 1) return clean;
 
   return kept.slice(0, 4).join(' ');
 }

@@ -570,6 +570,8 @@
 /* KI-Assistenz (ADR D6/D7): optionaler, eingeklappter Eintrag in der Quellenliste */
 .ai-panel { display: flex; flex-direction: column; gap: var(--sp-3); }
 .ai-panel__note { font-size: var(--fs-small); color: var(--c-muted); line-height: 1.5; }
+.ai-panel__query { font-size: var(--fs-xs); color: var(--c-muted); line-height: 1.4; }
+.ai-panel__query strong { color: var(--c-text-2); font-weight: 700; }
 .ai-panel__action { align-self: flex-start; }
 .ai-panel__loading {
   display: flex;

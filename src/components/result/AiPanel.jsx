@@ -69,6 +69,12 @@ export function AiPanel({ device }) {
         startet eine externe KI-Anfrage.
       </p>
 
+      {data?.query && (
+        <p className="ai-panel__query">
+          Quellensuche: <strong>{data.query}</strong>
+        </p>
+      )}
+
       {status === 'idle' && (
         <button className="btn btn--primary ai-panel__action" onClick={run}>
           <Icon name="sparkle" size={16} weight="fill" />

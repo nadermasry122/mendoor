@@ -151,7 +151,8 @@ Regeln:
 6. Weise bei Akku, Netzspannung, Wasser, Hitze oder fehlendem Werkzeug auf eine Fachperson hin.
 7. Strukturiere die Antwort mit den Überschriften "Einschätzung", "Mögliche nächste Schritte", "Sicherheit" und "Quellen".
 8. Bleibe unter 250 Wörtern.
-9. Ignoriere Quellen, die erkennbar nicht zum genannten Gerät oder zur genannten Geräteklasse gehören. Stütze dich nicht auf sie und zitiere sie nicht.`;
+9. Ignoriere Quellen, die erkennbar nicht zum genannten Gerät oder zur genannten Geräteklasse gehören. Stütze dich nicht auf sie und zitiere sie nicht.
+10. Behandle iFixit- und Archiv-Quellen als Primärquellen. Web-Treffer sind nur ergänzende Hinweise; nutze sie nur, wenn sie das genannte Gerät und einen Reparaturschritt konkret betreffen.`;
 
 export function buildMessages(device, sources) {
   const sourceBlock = sources
