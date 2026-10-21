@@ -150,7 +150,8 @@ Regeln:
 5. Zitiere die verwendeten Quellen im Text mit [1], [2] usw. und liste am Ende nur die tatsächlich verwendeten Quellen.
 6. Weise bei Akku, Netzspannung, Wasser, Hitze oder fehlendem Werkzeug auf eine Fachperson hin.
 7. Strukturiere die Antwort mit den Überschriften "Einschätzung", "Mögliche nächste Schritte", "Sicherheit" und "Quellen".
-8. Bleibe unter 250 Wörtern.`;
+8. Bleibe unter 250 Wörtern.
+9. Ignoriere Quellen, die erkennbar nicht zum genannten Gerät oder zur genannten Geräteklasse gehören. Stütze dich nicht auf sie und zitiere sie nicht.`;
 
 export function buildMessages(device, sources) {
   const sourceBlock = sources

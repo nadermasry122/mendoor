@@ -20,7 +20,9 @@ export function Disclosure({ id, icon, title, subtitle, open, onToggle, children
         <Icon name="chevronRight" size={16} weight="bold" className="menu-item__chevron" />
       </button>
       <div className="disclosure__panel">
-        <div className="disclosure__inner">{children}</div>
+        <div className="disclosure__inner">
+          <div className="disclosure__content">{children}</div>
+        </div>
       </div>
     </div>
   );

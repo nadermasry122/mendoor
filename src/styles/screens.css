@@ -568,7 +568,6 @@
 .score-pill--alt .score-pill__val { color: var(--c-muted); }
 
 /* KI-Assistenz (ADR D6/D7): optionaler, eingeklappter Eintrag in der Quellenliste */
-.disclosure--ai[data-open='true'] > .disclosure__panel { max-height: 3000px; }
 .ai-panel { display: flex; flex-direction: column; gap: var(--sp-3); }
 .ai-panel__note { font-size: var(--fs-small); color: var(--c-muted); line-height: 1.5; }
 .ai-panel__action { align-self: flex-start; }

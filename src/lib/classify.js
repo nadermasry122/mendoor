@@ -141,7 +141,24 @@ export function extractCandidates(text) {
     if (!v || v.length < 3 || v.length > 40) return;
     if (/^\d{1,2}$/.test(v)) return;
     if (STOPWORDS.has(v.toLowerCase())) return;
-    scored.push({ text: v, score: s });
+
+    /*
+     * Reine Modellcodes (A2890, WAT28460/01, SM-G991B) sind für die Suche
+     * nur brauchbar, wenn der Code auch in einer Quelle vorkommt. Der
+     * menschenlesbare Name („iPhone 14 Pro“, „Bosch Serie 6“) ist deutlich
+     * zuverlässiger. Deshalb bevorzugen wir Marken-/Mehrwort-Kandidaten
+     * und stufen alleinstehende Codes zurück — sie bleiben als Chip
+     * auswählbar, sind aber nicht mehr die Vorauswahl.
+     */
+    const lower = v.toLowerCase();
+    const hasBrand = KNOWN_BRANDS.some((b) =>
+      b.length <= 3 ? new RegExp(`\\b${b}\\b`).test(lower) : lower.includes(b)
+    );
+    const multiWord = /\s/.test(v);
+    const bareCode = !multiWord && /[A-Za-z]/.test(v) && /\d/.test(v);
+    const rank = s + (hasBrand ? 4 : 0) + (multiWord ? 2 : 0) - (bareCode ? 3 : 0);
+
+    scored.push({ text: v, score: rank });
   };
 
   lines.forEach((line) => {

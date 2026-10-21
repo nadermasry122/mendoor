@@ -197,15 +197,21 @@
 }
 .disclosure[data-open='true'] > .menu-item .menu-item__chevron { transform: rotate(90deg); }
 
+/* Auf-/Zuklappen über eine 0fr→1fr-Grid-Zeile: Der Bereich wächst mit
+   seinem Inhalt, statt bei einer festen max-height abgeschnitten zu werden.
+   Dadurch bleiben auch lange Ergebnislisten vollständig erreichbar und es
+   entsteht kein zweiter, nicht scrollbarer Scrollbereich in der Seite. */
 .disclosure__panel {
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
   overflow: hidden;
   background: var(--c-surface);
   border-top: 1px solid var(--c-border);
-  transition: max-height 0.3s ease;
+  transition: grid-template-rows 0.3s ease;
 }
-.disclosure[data-open='true'] > .disclosure__panel { max-height: 420px; }
-.disclosure__inner { padding: var(--sp-4); }
+.disclosure__panel > .disclosure__inner { min-height: 0; overflow: hidden; }
+.disclosure[data-open='true'] > .disclosure__panel { grid-template-rows: 1fr; }
+.disclosure__content { padding: var(--sp-4); }
 
 /* ── Bottom-Sheet (z. B. OCR-Bestätigung) ── */
 .sheet {

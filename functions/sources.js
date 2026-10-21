@@ -95,6 +95,36 @@ export function domainOf(url) {
    iFixit — öffentliche, CORS-fähige API. Die Kaskade entspricht der
    Client-Logik (ADR D1/D5), damit die KI dieselbe Trefferbasis sieht.
    ══════════════════════════════════════════════════════════════ */
+
+/* Häufige Füllwörter, die für den Geräteabgleich nichts aussagen. */
+const QUERY_STOP_TOKENS = new Set([
+  'der', 'die', 'das', 'und', 'für', 'fur', 'mit', 'von', 'the', 'and', 'for', 'with',
+  'model', 'modell', 'typ', 'type', 'guide', 'anleitung', 'repair', 'reparatur',
+  'replacement', 'austausch', 'series', 'serie', 'pro', 'max', 'plus', 'ultra', 'mini',
+  '5g', '4g', 'lte', 'wifi',
+]);
+
+function queryTokens(query) {
+  return String(query || '')
+    .toLowerCase()
+    .split(/[^a-z0-9äöüß]+/)
+    .filter((token) => !QUERY_STOP_TOKENS.has(token) && (token.length >= 2 || /^\d$/.test(token)));
+}
+
+/*
+ * iFixit sucht unscharf: „A2890“ liefert z. B. Anleitungen für ein
+ * Samsung SCH-A890, „A2251“ einen Shark-Staubsauger. Solche Treffer sind
+ * für die KI schädlicher als keine Treffer, weil das Modell sie sonst
+ * brav zusammenfasst. Wir behalten nur Guides, deren Titel/Subject/Kategorie
+ * alle aussagekräftigen Token des Gerätenamens enthalten.
+ */
+function isRelevantGuide(query, guide) {
+  const tokens = queryTokens(query);
+  if (tokens.length === 0) return true;
+  const haystack = `${guide.title || ''} ${guide.subject || ''} ${guide.category || ''}`.toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
 export async function searchIfixitGuides(device) {
   for (const query of buildQueryCascade(device)) {
     const url =
@@ -114,7 +144,14 @@ export async function searchIfixitGuides(device) {
 
     const data = await resp.json().catch(() => null);
     const guides = Array.isArray(data?.results)
-      ? data.results.filter((r) => r && r.dataType === 'guide' && r.guideid && r.title)
+      ? data.results.filter(
+          (r) =>
+            r &&
+            r.dataType === 'guide' &&
+            r.guideid &&
+            r.title &&
+            isRelevantGuide(device, r)
+        )
       : [];
 
     if (guides.length > 0) return guides;
