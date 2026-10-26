@@ -87,6 +87,7 @@ export async function retrieveSources(device, env) {
       url,
       snippet: truncate(stripHtml(data.snippet || ''), 480),
       meta: truncate(stripHtml(data.meta || ''), 160),
+      ...(data.kind ? { kind: data.kind } : {}),
     });
   };
 
@@ -131,6 +132,7 @@ export async function retrieveSources(device, env) {
         url: item.url,
         snippet: item.snippet,
         meta: `Websuche · ${domainOf(item.url)}`,
+        kind: item.kind || 'article',
       });
     });
   } else {
@@ -138,6 +140,22 @@ export async function retrieveSources(device, env) {
   }
 
   return { query, sources, errors };
+}
+
+/* Quellen-Typen für Prompt und UI (ADR D8, Stufe C). */
+const SOURCE_TYPE_LABELS = {
+  ifixit: 'Reparaturanleitung (iFixit)',
+  archive: 'Handbuch (Internet Archive)',
+};
+const WEB_KIND_LABELS = {
+  manual: 'Herstellerhandbuch',
+  repair: 'Reparaturhinweis',
+  article: 'Fachartikel',
+};
+
+function sourceTypeLabel(source) {
+  if (source.type === 'web') return WEB_KIND_LABELS[source.kind] || 'Web-Quelle';
+  return SOURCE_TYPE_LABELS[source.type] || source.type;
 }
 
 const SYSTEM_PROMPT = `Du bist der KI-Reparaturassistent von mendooR, einer Anwendung für Reparatur, Wiederverwendung und Recycling von Elektroaltgeräten.
@@ -152,13 +170,13 @@ Regeln:
 7. Strukturiere die Antwort mit den Überschriften "Einschätzung", "Mögliche nächste Schritte", "Sicherheit" und "Quellen".
 8. Bleibe unter 250 Wörtern.
 9. Ignoriere Quellen, die erkennbar nicht zum genannten Gerät oder zur genannten Geräteklasse gehören. Stütze dich nicht auf sie und zitiere sie nicht.
-10. Behandle iFixit- und Archiv-Quellen als Primärquellen. Web-Treffer sind nur ergänzende Hinweise; nutze sie nur, wenn sie das genannte Gerät und einen Reparaturschritt konkret betreffen.`;
+10. Ordne die Quellen nach Verlässlichkeit ein: Herstellerhandbücher und offizielle Support-Seiten zuerst, danach iFixit-/Reparaturanleitungen, danach Internet-Archive-Dokumente, zuletzt Fachartikel/Web. Bevorzuge bei Widersprüchen die jeweils höherwertige Quelle und nutze Web-Treffer nur, wenn sie das genannte Gerät konkret betreffen.`;
 
 export function buildMessages(device, sources) {
   const sourceBlock = sources
     .map((source) => {
       const meta = source.meta ? ` | ${source.meta}` : '';
-      return `[${source.id}] ${source.type}${meta}\nTitel: ${source.title}\nURL: ${source.url}\nAuszug: ${source.snippet || '(kein Auszug)'}`;
+      return `[${source.id}] Typ: ${sourceTypeLabel(source)}${meta}\nTitel: ${source.title}\nURL: ${source.url}\nAuszug: ${source.snippet || '(kein Auszug)'}`;
     })
     .join('\n\n');
 

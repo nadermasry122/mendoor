@@ -1,5 +1,4 @@
-import { buildSiteRestrictedSearchUrl, searchWeb } from '../../lib/api.js';
-import { TRUSTED_WEB_DOMAINS } from '../../constants/content.js';
+import { buildGoogleFallbackUrl, searchWeb } from '../../lib/api.js';
 import { useAsyncData } from '../../hooks/useAsyncData.js';
 import { SkeletonCard } from '../ui/Skeleton.jsx';
 import { StateBox } from '../ui/StateBox.jsx';
@@ -8,12 +7,12 @@ import { FormattedText } from '../ui/FormattedText.jsx';
 
 /*
  * Web-Suche-Panel (Tavily über Worker). Lädt erst beim ersten Öffnen.
- * Fällt bei leerem Ergebnis oder Fehler auf eine site-beschränkte
- * Google-Suche zurück (Link-out-Muster).
+ * Fällt bei leerem Ergebnis oder Fehler auf eine offene Google-Suche
+ * zurück (Link-out-Muster, ADR D8).
  */
 export function WebSearchPanel({ device, active }) {
   const { status, data: items, reload } = useAsyncData(() => searchWeb(device), [device], active);
-  const fallbackUrl = buildSiteRestrictedSearchUrl(device, TRUSTED_WEB_DOMAINS);
+  const fallbackUrl = buildGoogleFallbackUrl(device);
 
   if (status === 'idle') return null;
 
@@ -58,7 +57,7 @@ export function WebSearchPanel({ device, active }) {
           </button>
         }
       >
-        Zu „{device}“ gibt es auf den durchsuchten Seiten aktuell keine passenden Artikel.
+        Zu „{device}“ wurden aktuell keine passenden Artikel gefunden.
       </StateBox>
     );
   }

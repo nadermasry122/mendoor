@@ -455,7 +455,7 @@ async function handleAi(request, env) {
       answer,
       model: AI_MODEL,
       query,
-      sources: sources.map(({ id, type, title, url, meta }) => ({ id, type, title, url, meta })),
+      sources: sources.map(({ id, type, title, url, meta, kind }) => ({ id, type, title, url, meta, ...(kind ? { kind } : {}) })),
       retrievedAt: new Date().toISOString(),
       usage: result && result.usage ? result.usage : null
     },

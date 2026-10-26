@@ -209,15 +209,4 @@ export const COMMUNITY_SUBS = [
   { name: 'homelab', desc: 'Alte Geräte weiterverwenden' },
 ];
 
-// Vertrauenswürdige Domains für die Web-Suche. Muss mit der serverseitigen
-// Einschränkung im Worker (`TRUSTED_DOMAINS`) übereinstimmen.
-export const TRUSTED_WEB_DOMAINS = [
-  'computerbase.de',
-  'chip.de',
-  'notebookcheck.net',
-  'heise.de',
-  'golem.de',
-  'pcwelt.de',
-];
-
 export const DEMO_DEVICE = 'iPhone 14 Pro';

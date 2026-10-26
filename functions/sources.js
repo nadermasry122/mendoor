@@ -215,32 +215,84 @@ export async function searchArchiveItems(query) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Tavily — Websuche, serverseitig auf eine kuratierte Liste
-   vertrauenswürdiger deutscher Tech-/Reparatur-Domains beschränkt.
-   Gründe für Tavily: siehe ADR D4 (monatlich erneuertes Freikontingent,
-   keine Kreditkarte im Signup).
+   Websuche — offene Tavily-Suche mit Intent- und Trust-Ranking
+   (ADR D8). Keine Domain-Allowlist mehr: Recall kommt aus der
+   offenen Suche, Precision aus dem Ranking. Nur eindeutiger Müll
+   (Marktplätze, Preisvergleiche, Shops, Such-/SEO-Seiten) wird
+   über eine Denylist entfernt. Gründe für Tavily: siehe ADR D4.
    ══════════════════════════════════════════════════════════════ */
-export const TRUSTED_DOMAINS = [
-  'computerbase.de',
-  'chip.de',
-  'notebookcheck.net',
-  'heise.de',
-  'golem.de',
-  'pcwelt.de',
+
+/* Marken-Inferenz: Produktlinien ohne explizite Marke werden einer
+   Marke zugeordnet (z. B. „Latitude“ → Dell). Nur ein kuratierter,
+   kleiner Satz — er verbessert die Query, ist aber keine vollständige
+   Herstellerdatenbank (ADR D8, Stufe A). */
+const BRAND_HINTS = [
+  [/latitude|inspiron|xps|optiplex|precision/i, 'Dell'],
+  [/thinkpad|ideapad|legion|yoga|thinkcentre/i, 'Lenovo'],
+  [/pavilion|omen|elitebook|probook|spectre/i, 'HP'],
+  [/macbook|iphone|ipad|imac|mac mini|mac pro|apple watch|airpods/i, 'Apple'],
+  [/surface/i, 'Microsoft'],
+  [/galaxy|odyssey/i, 'Samsung'],
+  [/vaio|playstation|bravia|xperia|wh-1000|wh1000/i, 'Sony'],
+  [/pixel|nest|chromecast/i, 'Google'],
+  [/kindle|echo|firestick|fire stick/i, 'Amazon'],
+  [/roomba/i, 'iRobot'],
+  [/senseo/i, 'Philips'],
+  [/nespresso/i, 'DeLonghi'],
 ];
 
-/*
- * Die vertrauenswürdigen Tech-Domains liefern viel Produktjournalismus
- * (Tests, Preisvergleiche, Angebote) und nur selten gerätespezifische
- * Reparaturhinweise. Ohne Filter landen solche Seiten als „Web-Quelle“
- * im RAG-Prompt und die KI fasst dann Tests oder Preise statt Reparaturen
- * zusammen. Deshalb: Gerät muss im Titel/URL stehen, der Titel muss
- * Reparaturabsicht signalisieren, und reine Test-/Preis-/Suchseiten
- * fliegen raus.
- */
-const WEB_REPAIR_HINT = /(reparatur|instandsetzung|repair|defekt|fehler|anleitung|zerleg|auseinanderbau|austausch|auswechseln|ersetzen|akku|batterie|display|bildschirm|problem|beheben|wartung|diagnose|\bfix\b|how\s+to)/i;
-const WEB_NOISE_TITLE = /(\bim test\b|testbericht|preisvergleich|\bab \d+[.,]\d+\s*€|kaufen|bestellen|angebot|deal|schnäppchen|\bsearch\b|\bsuche\b)/i;
-const WEB_NOISE_URL = /(^|\/)(search|suche)(\/|$)|preisvergleich/i;
+const KNOWN_BRANDS = new Set([
+  'apple', 'samsung', 'dell', 'lenovo', 'hp', 'hewlett packard', 'sony',
+  'microsoft', 'asus', 'acer', 'lg', 'xiaomi', 'huawei', 'oneplus',
+  'google', 'amazon', 'bosch', 'siemens', 'miele', 'philips', 'grundig',
+  'toshiba', 'panasonic', 'jvc', 'daikin', 'vaillant', 'viessmann',
+  'mitsubishi', 'electrolux', 'aeg', 'bauknecht', 'whirlpool', 'jura',
+  'delonghi', 'de longhi', 'nespresso', 'sennheiser', 'bose', 'jbl',
+  'anker', 'gopro', 'canon', 'nikon', 'fujifilm', 'olympus', 'pentax',
+  'gigabyte', 'msi', 'razer', 'nokia', 'motorola', 'zte', 'oppo', 'vivo',
+]);
+
+export function inferBrand(device) {
+  const text = String(device || '');
+  for (const [pattern, brand] of BRAND_HINTS) {
+    if (pattern.test(text)) return brand;
+  }
+  const lower = text.toLowerCase();
+  for (const brand of KNOWN_BRANDS) {
+    if (brand.length >= 3 && lower.includes(brand)) return brand.charAt(0).toUpperCase() + brand.slice(1);
+  }
+  return '';
+}
+
+function brandToken(brand) {
+  return String(brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/* Offene Suche: Query mit Marke (falls inferiert) und bilingualen
+   Dokumentations-/Reparaturbegriffen (ADR D8, Stufe A). */
+export function buildWebQuery(base, brand) {
+  const clean = String(base || '').trim();
+  const bt = brandToken(brand);
+  const prefix = bt && !clean.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ` : '';
+  return `${prefix}${clean} Reparatur Bedienungsanleitung service manual`.trim();
+}
+
+export function buildSecondWebQuery(base, brand) {
+  const clean = String(base || '').trim();
+  const bt = brandToken(brand);
+  const prefix = bt && !clean.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ` : '';
+  return `${prefix}${clean} teardown Zerlegen Ersatzteile`.trim();
+}
+
+/* Intent: Dokumentations- ODER Reparaturabsicht im Titel. */
+const DOC_HINT = /(service.?manual|service.?anleitung|owner.?s?.?manual|user.?manual|user.?guide|bedienungsanleitung|betriebsanleitung|gebrauchsanweisung|handbuch|manual|schematic|schaltplan)/i;
+const REPAIR_HINT = /(reparatur|instandsetzung|repair|teardown|zerleg|disassembly|demontage|anleitung|austausch|auswechseln|ersetzen|tausch|akku|batterie|display|bildschirm|defekt|fehler|problem|beheben|wartung|diagnose|\bfix\b|how\s?to)/i;
+const INTENT_HINT = /(service.?manual|service.?anleitung|owner.?s?.?manual|user.?manual|user.?guide|bedienungsanleitung|betriebsanleitung|gebrauchsanweisung|handbuch|manual|schematic|schaltplan|reparatur|instandsetzung|repair|teardown|zerleg|disassembly|demontage|anleitung|austausch|auswechseln|ersetzen|tausch|akku|batterie|display|bildschirm|defekt|fehler|problem|beheben|wartung|diagnose|\bfix\b|how\s?to)/i;
+
+/* Eindeutiger Müll: Marktplätze, Preisvergleiche, Shops, SEO-/Suchseiten. */
+const DENY_DOMAIN = /(amazon|ebay|alibaba|aliexpress|dhgate|banggood|fruugo|geizhals|idealo|billiger|guenstiger|preisvergleich|mediamarkt|saturn|otto|kaufland|wish|etsy|shopping|\.shop\b|shop\.)/i;
+const NOISE_TITLE = /(\bim test\b|testbericht|preisvergleich|\bab \d+[.,]\d+\s*€|kaufen|bestellen|angebot|deal|schnäppchen|schnaeppchen|rabatt|\bsuche\b|\bsearch\b)/i;
+const NOISE_URL = /(^|\/)(search|suche)(\/|$)|preisvergleich/i;
 
 /* Für Web-Treffer zählen auch Modellzusätze wie Pro/Max/Ultra, damit
    „iPhone 14 Pro“ nicht durch einen „iPhone 14 Plus“-Artikel ersetzt wird. */
@@ -257,34 +309,81 @@ function webQueryTokens(query) {
     .filter((token) => token && !WEB_STOP_TOKENS.has(token) && (token.length >= 2 || /^\d$/.test(token)));
 }
 
-function isRelevantWebResult(query, result) {
-  const title = stripHtml(result.title);
-  if (!title) return false;
-  if (WEB_NOISE_URL.test(result.url || '')) return false;
-  if (!WEB_REPAIR_HINT.test(title)) return false;
-  if (WEB_NOISE_TITLE.test(title)) return false;
+/*
+ * Trust-Ranking statt Ausschluss (ADR D8, Stufe B). Verworfen wird nur
+ * eindeutiger Müll oder ein Treffer ohne jeden Gerätebezug in Titel/URL.
+ * Die Punktzahl entscheidet die Reihenfolge (Herstellerhandbuch vor
+ * Reparaturhinweis vor Fachartikel).
+ */
+export function rankWebResult(query, result, brand) {
+  const title = stripHtml(result && result.title);
+  const url = String(result && result.url || '');
+  if (!title || !/^https?:\/\//i.test(url)) return null;
+
+  let domain = '';
+  try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch { domain = ''; }
+  const d = domain.toLowerCase();
+  const u = url.toLowerCase();
+  const t = title.toLowerCase();
+
+  if (DENY_DOMAIN.test(d) || NOISE_URL.test(u) || NOISE_TITLE.test(title)) return null;
+  if (!INTENT_HINT.test(title)) return null;
 
   const tokens = webQueryTokens(query);
-  if (tokens.length === 0) return true;
-  /* Bewusst nur der Titel: Snippets enthalten oft Gerätelisten oder
-     Werbetexte, die einen Treffer nur vortäuschen. Token-Vergleich statt
-     substring, damit „Pro“ nicht in „Problem“ matcht; lange Codes dürfen
-     auch zusammengeschrieben im Titel stehen (WH1000XM4). */
-  const titleLower = title.toLowerCase();
-  let urlLower = '';
-  try {
-    urlLower = decodeURIComponent(String(result.url || '')).toLowerCase();
-  } catch {
-    urlLower = String(result.url || '').toLowerCase();
-  }
-  const haystack = `${titleLower} ${urlLower}`;
-  const haystackTokens = new Set(haystack.split(/[^a-z0-9äöüß]+/).filter(Boolean));
-  return tokens.every(
-    (token) => haystackTokens.has(token) || (token.length >= 5 && haystack.includes(token))
-  );
+  const hayTokens = new Set(`${t} ${u}`.split(/[^a-z0-9äöüß]+/).filter(Boolean));
+  const matched = tokens.filter((tok) => hayTokens.has(tok) || (tok.length >= 5 && (t.includes(tok) || u.includes(tok))));
+  const relevance = tokens.length ? matched.length / tokens.length : 0;
+  if (tokens.length && relevance === 0) return null;
+
+  let score = Number(result && result.score) || 0;
+
+  const bt = brandToken(brand);
+  const isManufacturerDomain = bt && d.includes(bt);
+  if (isManufacturerDomain) score += 5;
+  else if ([...KNOWN_BRANDS].some((b) => { const c = b.replace(/[^a-z0-9]/g, ''); return c.length >= 3 && d.includes(c); })) score += 3;
+
+  if (/(ifixit|repair|reparatur|zerlegen|teardown)/i.test(d)) score += 2;
+  if (DOC_HINT.test(title)) score += 3;
+  if (REPAIR_HINT.test(title)) score += 1;
+  if (/\.pdf(\?|#|$)/i.test(u) || /\/(download|support|service|manual|handbuch|anleitung)(\/|$)/i.test(u)) score += 2;
+  score += relevance === 1 ? 2 : relevance;
+
+  const kind = DOC_HINT.test(title) ? 'manual' : (REPAIR_HINT.test(title) ? 'repair' : 'article');
+
+  return {
+    title,
+    url,
+    snippet: truncate(stripHtml(result && result.content || ''), 420),
+    kind,
+    score,
+  };
 }
 
-export async function searchWebItems(query, env) {
+export function rankWebResults(query, brand, results) {
+  const items = [];
+  const seen = new Set();
+  for (const r of results || []) {
+    if (!r || !r.url || !r.title) continue;
+    const item = rankWebResult(query, r, brand);
+    if (!item || seen.has(item.url)) continue;
+    seen.add(item.url);
+    items.push(item);
+  }
+  return items.sort((a, b) => b.score - a.score);
+}
+
+const WEB_CACHE_NAME = 'mendoor-web-v1';
+const WEB_CACHE_TTL = 3600;
+const MIN_USABLE_WEB = 2;
+
+async function runTavilySearch(query, env) {
+  const cacheKey = `https://mendoor.cache/web/${encodeURIComponent(query)}`;
+  try {
+    const cache = await caches.open(WEB_CACHE_NAME);
+    const hit = await cache.match(cacheKey);
+    if (hit) return await hit.json();
+  } catch { /* Cache ist optional */ }
+
   let apiKey;
   try {
     apiKey = await env.TAVILY_API_KEY.get();
@@ -295,13 +394,6 @@ export async function searchWebItems(query, env) {
     throw new SourceError('Tavily API key empty', 500);
   }
 
-  const tavilyBody = {
-    query: `${query} Reparatur`,
-    search_depth: 'basic',
-    max_results: 8,
-    include_domains: TRUSTED_DOMAINS,
-  };
-
   let resp;
   try {
     resp = await fetch('https://api.tavily.com/search', {
@@ -310,7 +402,7 @@ export async function searchWebItems(query, env) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(tavilyBody),
+      body: JSON.stringify({ query, search_depth: 'basic', max_results: 10 }),
     });
   } catch (err) {
     throw new SourceError('Tavily unreachable', 502, err.message);
@@ -322,15 +414,43 @@ export async function searchWebItems(query, env) {
   }
 
   const data = await resp.json().catch(() => null);
-  const results = Array.isArray(data?.results) ? data.results : [];
 
-  return results
-    .filter((r) => r && r.url && r.title && /^https?:\/\//i.test(r.url))
-    .filter((r) => isRelevantWebResult(query, r))
-    .slice(0, 8)
-    .map((r) => ({
-      title: stripHtml(r.title),
-      url: r.url,
-      snippet: truncate(stripHtml(r.content || ''), 420),
-    }));
+  try {
+    const cache = await caches.open(WEB_CACHE_NAME);
+    await cache.put(
+      cacheKey,
+      new Response(JSON.stringify(data), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${WEB_CACHE_TTL}` },
+      })
+    );
+  } catch { /* Cache ist optional */ }
+
+  return data;
+}
+
+/*
+ * Offene Websuche (ADR D8): Query bauen, Tavily offen abrufen, ranken.
+ * Liefert die offene Suche weniger als zwei brauchbare Treffer, folgt
+ * eine zweite, repaturspezifische Query (ADR D8, Stufe C).
+ */
+export async function searchWebItems(device, env) {
+  const base = bestSearchTerm(device);
+  const brand = inferBrand(device) || inferBrand(base);
+
+  const first = await runTavilySearch(buildWebQuery(base, brand), env);
+  let results = rankWebResults(base, brand, first && first.results);
+
+  if (results.length < MIN_USABLE_WEB) {
+    const second = await runTavilySearch(buildSecondWebQuery(base, brand), env);
+    const more = rankWebResults(base, brand, second && second.results);
+    const seen = new Set(results.map((r) => r.url));
+    for (const item of more) {
+      if (seen.has(item.url)) continue;
+      seen.add(item.url);
+      results.push(item);
+    }
+    results = results.sort((a, b) => b.score - a.score);
+  }
+
+  return results.slice(0, 8).map(({ title, url, snippet, kind }) => ({ title, url, snippet, kind }));
 }

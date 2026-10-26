@@ -657,6 +657,15 @@
   color: var(--c-muted);
   font-size: var(--fs-xs);
 }
+.ai-panel__source-type--manual,
+.ai-panel__source-type--ifixit {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+.ai-panel__source-type--repair {
+  background: var(--c-accent-dim);
+  color: var(--c-accent);
+}
 .ai-panel__disclaimer {
   font-size: var(--fs-xs);
   line-height: 1.45;

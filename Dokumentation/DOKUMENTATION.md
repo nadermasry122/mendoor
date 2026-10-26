@@ -124,7 +124,7 @@ mendooR folgt dem Standardmuster für sichere Anbindung schlüsselpflichtiger Cl
 | `GET /api/ping` | Health-Check | ✅ |
 | `POST /api/vision` | Proxy zu Google Cloud Vision (OCR), `?debug=1` für Rohantwort | ✅ |
 | `GET /api/archive` | Suche nach gescannten Handbüchern (Internet Archive) | ✅ |
-| `GET /api/websearch` | Fachartikel-Suche über Tavily, auf vertrauenswürdige Domains beschränkt (D8: offene Suche geplant) | ✅ |
+| `GET /api/websearch` | Offene Fachartikel-/Dokumentations-Suche über Tavily mit Intent-/Trust-Ranking (ADR D8) | ✅ |
 | `POST /api/ai` | KI-Assistenz: serverseitiges RAG + Workers-AI-Synthese (ADR D6/D7); Body `{ "device": "…" }` | ✅ |
 | `GET /api/ai?device=…&debug=1` | Diagnose: RAG-Retrieval + Prompt **ohne** AI-Aufruf (Browser-Test) | ✅ |
 | ~~`/api/reddit`~~ | entfernt — Reddit blockiert Serverzugriffe (siehe 7.2) | ❌ |
@@ -311,7 +311,7 @@ Die Markenliste blieb erhalten, wurde aber von einer **Voraussetzung** zu einem 
 
 ### 5.5 Suchbegriffsbildung und Suchkaskade
 
-- **`bestSearchTerm`** - entfernt interne Herstellercodes (≥ 6 Zeichen, Buchstaben+Ziffern, z. B. `WAT28401`) aus dem Suchbegriff, behält aber kurze IDs und Zahlen (`A11`, `14`, `2019`). So wird "Samsung Galaxy A11" zu "Samsung Galaxy A11", aber "Bosch Serie 6 WAT28401" zu "Bosch Serie 6". **D8-Ergänzung (vorgeschlagen, noch nicht umgesetzt):** Bleibt nur ein Token übrig, wird der Code behalten (z. B. `Sony WH-1000XM4` statt `Sony`).
+- **`bestSearchTerm`** - entfernt interne Herstellercodes (≥ 6 Zeichen, Buchstaben+Ziffern, z. B. `WAT28401`) aus dem Suchbegriff, behält aber kurze IDs und Zahlen (`A11`, `14`, `2019`). So wird "Samsung Galaxy A11" zu "Samsung Galaxy A11", aber "Bosch Serie 6 WAT28401" zu "Bosch Serie 6". **D8-Ergänzung (umgesetzt):** Bleibt nur ein Token übrig, wird der Code behalten (z. B. `Sony WH-1000XM4` statt `Sony`).
 - **Suchkaskade** (für iFixit und Community) - von spezifisch zu breit: (1) voller String → (2) erste zwei Tokens → (3) erstes Token → (4) Modellcode-Token. Erster Schritt mit Treffern gewinnt.
 - Grund für die Kaskade: Vollständige Modellnummern treten in informellen Forenbeiträgen selten wörtlich auf und schränken die Trefferzahl unnötig ein.
 
@@ -409,11 +409,11 @@ Endpunkt `/api/archive?q=...` beschränkt auf `mediatype:texts` mit Titelsuche; 
 
 **Warum Tavily:** Google Custom Search JSON API ist für Neukunden geschlossen (Abschaltung 2027-01-01); der Nachfolger Vertex AI Search berechnet ab der ersten Anfrage ohne Freikontingent; öffentliche SearXNG-Instanzen blockieren die JSON-API (403). Tavily war die einzige Option mit monatlich erneuerndem Freikontingent (1.000 Suchen/Monat) **ohne** Kreditkarte im Signup [Q20].
 
-Serverseitig auf vertrauenswürdige deutsche Tech-/Reparatur-Domains beschränkt (`include_domains`: computerbase.de, chip.de, notebookcheck.net, heise.de, golem.de, pcwelt.de). Suchbegriff wird mit "Reparatur" angereichert; `search_depth: basic` (Kostengrund).
+Serverseitig läuft die Suche **offen** (ohne `include_domains`-Allowlist): Die Query wird um die inferierte Marke sowie deutsche und englische Dokumentations-/Reparaturbegriffe ergänzt; reine Marktplätze, Preisvergleiche, Shops und Such-/SEO-Seiten fliegen über eine Denylist heraus; die Treffer werden über ein **Intent- und Trust-Ranking** sortiert (ADR D8). Gerätebezug und Dokumentations-/Reparaturabsicht sind Pflicht; Herstellerdomains, Handbücher, PDFs und Reparaturdomains werden höher gewichtet.
 
-> **Geplante Ablösung (ADR D8):** Die Domain-Allowlist wird durch eine **offene Websuche mit Intent-/Trust-Ranking** ersetzt (Herstellerhandbücher als Primärquellen, Denylist statt Allowlist, optionale zweite Suche, Cache). Grund: Die Allowlist schließt offizielle Herstellerdokumentation systematisch aus (Nutzertest „latitude 7420“ → Dell-Handbuch). Die Umsetzung ist noch offen; bis dahin beschreibt der obige Absatz den Ist-Stand.
+> **Umsetzung (ADR D8, 2026-10-26):** Die frühere Domain-Allowlist (sechs deutsche Tech-Seiten) wurde durch die offene Suche mit Denylist + Intent-/Trust-Ranking ersetzt. Herstellerhandbücher gelten als Primärquellen; bei weniger als zwei brauchbaren Treffern folgt eine zweite, repaturspezifische Query; Ergebnisse werden pro Query gecacht. Die Live-Messung (Recall/Precision, Nulltreffer, Latenz, Tavily-Verbrauch) steht noch aus (`EVALUATION.md` §6.4).
 
-**Fallback:** Bei leerem Ergebnis/Fehler wird ein **site-restricted Google-Link** erzeugt (gleiches Link-out-Muster wie Reddit), sodass das Panel nie in einer Sackgasse endet.
+**Fallback:** Bei leerem Ergebnis/Fehler wird ein **offener Google-Link** erzeugt (gleiches Link-out-Muster wie Reddit), sodass das Panel nie in einer Sackgasse endet.
 
 ---
 

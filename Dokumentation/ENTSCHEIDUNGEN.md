@@ -36,6 +36,7 @@
 | D5 | Suchbegriffsbildung (`bestSearchTerm`) | aktiv | 6.5 |
 | D6 | KI-Assistenz: RAG-first, dann Cloudflare Workers AI | aktiv (Stufe 1+2 umgesetzt; Tool-Calling offen) | 7.5, 9.3 |
 | D7 | RAG-Orchestrierung und KI-Eintrag (Umsetzung D6) | aktiv (umgesetzt; Evaluation offen) | 7.5 |
+| D8 | Offene Websuche mit Trust-Ranking statt Domain-Allowlist | aktiv (umgesetzt; Evaluation offen) | 7.4, 8 |
 | E1 | Iteratives, sitzungsbasiertes Vorgehen | aktiv | 3.x (neu) |
 | E2 | Quellenhierarchie für Designfragen | aktiv | 4.x (neu) |
 | E3 | Fehlerdokumentation nach festem Schema | aktiv | 7 |
@@ -310,7 +311,7 @@
 - **Konsequenzen / Grenzen:** Verifikation mit echtem Netzwerkzugriff im Produktiv-Deployment noch zu bestätigen.
 
 ### D4 — Tavily statt Google Custom Search / SearXNG
-- **Status:** aktiv (Ablösung der Domain-Allowlist durch D8 vorgeschlagen; Tavily als Anbieter bleibt)
+- **Status:** aktiv (Domain-Allowlist durch D8 abgelöst; Tavily als Anbieter bleibt)
 - **Datum:** 2026-07-31
 - **Thesis-Kapitel:** 6.4
 - **Kontext:** Es sollte eine Websuche auf vertrauenswürdigen Fachseiten ergänzt werden.
@@ -318,10 +319,10 @@
 - **Entscheidung:** **Tavily**, serverseitig auf vertrauenswürdige deutsche Tech-/Reparatur-Domains beschränkt; Fallback auf site-restricted Google-Link.
 - **Begründung:** Google CSE ist für Neukunden geschlossen (Abschaltung 2027-01-01); Vertex AI Search berechnet ab der ersten Anfrage ohne Freikontingent; öffentliche SearXNG-Instanzen blockieren die JSON-API (403). Tavily ist die einzige Option mit **monatlich erneuertem** Freikontingent (1.000 Suchen/Monat) **ohne Kreditkarte** — kann also nicht still Kosten verursachen [Q20].
 - **Verworfene Alternativen:** siehe oben; zusätzlich Serper (einmaliges statt erneuertes Kontingent) und Brave (Freikontingent ohne Karte entfallen).
-- **Konsequenzen / Grenzen:** Weitere externe Abhängigkeit; Fallback-Link verhindert Sackgassen. Die ursprüngliche Beschränkung auf sechs deutsche Tech-Domains soll durch **D8** abgelöst werden (Vorschlag): Sie schließt Herstellerhandbücher und offizielle Supportseiten systematisch aus (Nutzerfall „latitude 7420“). Tavily bleibt der Suchanbieter.
+- **Konsequenzen / Grenzen:** Weitere externe Abhängigkeit; Fallback-Link verhindert Sackgassen. Die ursprüngliche Beschränkung auf sechs deutsche Tech-Domains wurde durch **D8** abgelöst (offene Suche mit Intent-/Trust-Ranking): Sie schloss Herstellerhandbücher und offizielle Supportseiten systematisch aus (Nutzerfall „latitude 7420“). Tavily bleibt der Suchanbieter.
 
 ### D5 — Suchbegriffsbildung (`bestSearchTerm`)
-- **Status:** aktiv (Ergänzung durch D8 vorgeschlagen)
+- **Status:** aktiv (Ergänzung durch D8 umgesetzt)
 - **Datum:** 2026-07-30
 - **Thesis-Kapitel:** 6.5
 - **Kontext:** Die Suche nach „iPhone 14" auf Reddit/Archiv verlor die Zahl; vollständige Modellcodes schränkten Treffer unnötig ein.
@@ -329,7 +330,7 @@
 - **Entscheidung:** `bestSearchTerm` verwirft nur **lange Misch-Token** (≥ 6 Zeichen, Buchstaben+Ziffern, z. B. `WAT28401`); kurze IDs und Zahlen (`A11`, `14`, `2019`) bleiben erhalten.
 - **Begründung:** Interne Codes schreibt in Foren niemand wörtlich; kurze Kennungen und Jahreszahlen werden dagegen tatsächlich gesucht. Verhindert Über- und Unter-Einschränkung der Suche.
 - **Verworfene Alternativen:** Vollständiger String (zu streng), generisches Kürzen (verliert relevante Zahlen).
-- **Konsequenzen / Grenzen:** Wird von iFixit-Kaskade, Community, Archiv und Websuche gemeinsam genutzt. **D8 schlägt vor:** Bleibt nach dem Entfernen des Modellcodes nur noch ein Token übrig, wird der Code behalten (z. B. `Sony WH-1000XM4` statt nur `Sony`, `Bosch WAT28460/01` statt nur `Bosch`), weil die Marke allein für die Websuche zu unspezifisch ist.
+- **Konsequenzen / Grenzen:** Wird von iFixit-Kaskade, Community, Archiv und Websuche gemeinsam genutzt. **D8-Ergänzung (umgesetzt):** Bleibt nach dem Entfernen des Modellcodes nur noch ein Token übrig, wird der Code behalten (z. B. `Sony WH-1000XM4` statt nur `Sony`, `Bosch WAT28460/01` statt nur `Bosch`), weil die Marke allein für die Websuche zu unspezifisch ist.
 
 ### D6 — KI-/Assistenzschicht: RAG-first, dann Cloudflare Workers AI
 - **Status:** aktiv (Stufe 1+2 umgesetzt; Tool-Calling/Evaluation offen)
@@ -403,12 +404,12 @@
 - **Quellen:** [Q32]–[Q48], [Q51], [Q52].
 
 ### D8 — Offene Websuche mit Trust-Ranking statt Domain-Allowlist
-- **Status:** vorgeschlagen; Entscheidung und Umsetzung ausstehend
-- **Datum:** 2026-10-21
+- **Status:** aktiv (umgesetzt; Evaluation offen)
+- **Datum:** 2026-10-21 (Vorschlag) · 2026-10-26 (Entscheidung + Umsetzung)
 - **Thesis-Kapitel:** 7.4 (Websuche), 8 (Evaluation)
 - **Kontext:** Die erste Websuche-Fassung beschränkte Tavily über `include_domains` auf sechs deutsche Tech-/Reparaturseiten. Der Nutzertest „latitude 7420“ lieferte in der App keine Treffer; ohne die Domain-Beschränkung erschien das offizielle Dell-Handbuch unmittelbar. Die Live-Analyse der Web-Quellen zeigte außerdem überwiegend Tests, Preisvergleiche, Angebote und markenbezogene, aber gerätefremde Artikel (z. B. Bosch-Heißluftfritteuse, E-Bike-Update, Notebookcheck-Suchseite, Sony PlayStation 2). Zusätzlich erkannte der bisherige Filter `manual`/`handbuch`/`owner's manual` nicht als Dokumentationsabsicht; `bestSearchTerm('Sony WH-1000XM4')` verkürzte auf `Sony`.
 - **Optionen:** (1) Domain-Allowlist beibehalten und enger pflegen, (2) offene Websuche ohne Filter, (3) offene Websuche mit Intent- und Trust-Ranking, (4) ausschließliche Herstellersuche, (5) zusätzliche Suchanbieter.
-- **Empfohlene Entscheidung:** **Option 3 — offene Websuche mit Trust-Ranking.** Im Einzelnen:
+- **Entscheidung:** **Option 3 — offene Websuche mit Trust-Ranking.** Im Einzelnen:
   1. **Keine `include_domains`-Allowlist als Standard.** Tavily durchsucht das offene Web; eine kleine **Denylist** entfernt reine Preisvergleichs-, Shop- und SEO-/Suchseiten.
   2. **Query-Builder:** Marke aus Produktlinie inferieren (z. B. `latitude` → Dell), Gerätename normalisieren und **deutsch + englisch** um Dokumentations- und Reparaturbegriffe ergänzen (`service manual`, `owner's manual`, `handbuch`, `bedienungsanleitung`, `Reparatur`, `teardown`).
   3. **Intent-Filter:** Dokumentationsabsicht ausdrücklich anerkennen (`manual`, `handbuch`, `service manual`, `owner's manual`, `user guide`, `schematic`, `anleitung`, `reparatur`, `teardown`, `zerlegen`).
@@ -434,7 +435,7 @@
 | **Nur Dokumentationsbegriffe ergänzen** | Behebt „Owner's Manual“, lässt aber die Domain-Allowlist und die fehlende Marken-Inferenz unangetastet. |
 
 - **Konsequenzen / Grenzen:**
-  - **Umsetzungsstand:** vorgeschlagen, noch nicht entschieden und nicht umgesetzt. Der Code enthält weiterhin die Allowlist; in Commit `2921d5b` (nicht deployt) liegen vorläufige Filteränderungen (strenger Web-Filter, `bestSearchTerm`-Edge-Case, Prompt-Regel 10, Query-Anzeige), die bei einer D8-Umsetzung überarbeitet werden müssen.
+  - **Umsetzungsstand:** umgesetzt (2026-10-26): `functions/sources.js` (Marken-Inferenz, Query-Builder, Denylist, Intent-Filter, Trust-Ranking, Cache, optionale Zweitsuche), `functions/rag.js` (Quellenhierarchie + Quellentypen im Prompt), `functions/_worker.js` (`kind`-Durchreichung), `src/lib/api.js`/`WebSearchPanel.jsx` (offener Google-Fallback) und `AiPanel.jsx` (Quellentyp-Badges). Der vorläufige Filter aus Commit `2921d5b` wurde durch die Ranking-Logik ersetzt; isolierte Node-Tests bestanden. Die Live-Messung mit Tavily steht aus.
   - **Sicherheit:** Offene Quellen erhöhen das Prompt-Injection-Risiko. Der Systemprompt behandelt Quellentext weiterhin als Daten; Ranking und Quellenbegrenzung reduzieren, beseitigen das Risiko aber nicht.
   - **Extraktion:** Herstellerhandbücher liegen oft als PDF vor; Snippet/Content-Extraktion ist begrenzt. Die App verlinkt das Original, statt es zu reproduzieren.
   - **Recht:** Handbücher sind urheberrechtlich geschützt; zulässig ist die Verlinkung und die zusammenfassende Auswertung, nicht die Vervielfältigung.

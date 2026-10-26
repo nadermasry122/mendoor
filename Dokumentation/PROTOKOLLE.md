@@ -33,6 +33,7 @@
 | S21 | 20.10.2026 | RAG + Workers AI implementieren, KI-Eintrag bauen | `/api/ai`, RAG-Retrieval, AiPanel, Doku | D7 |
 | S23 | 21.10.2026 | Ergebnis-Screen: Scrollen, Quellenrelevanz, Build-Prüfung | Scrollfix, Kandidatenranking, iFixit-Filter; Commit `092b63f` | — |
 | S24 | 21.10.2026 | Websuche: Domain-Allowlist und offene Suche | D8 vorgeschlagen: offene Suche + Trust-Ranking | D8 (Vorschlag); D4 zur Ablösung vorgeschlagen |
+| S25 | 26.10.2026 | D8 umsetzen (alle drei Stufen) | Offene Suche + Ranking, Query-Builder, Hierarchie, Badges; Tests grün | D8 (umgesetzt) |
 
 ---
 
@@ -265,6 +266,21 @@
 - **Fehler/Erkenntnis:** Eine Allowlist maximiert Precision, erzeugt aber systematische False Negatives und schließt die beste Quelle (Herstellerhandbuch) aus. Ein Intent-Filter ohne Dokumentationsbegriffe verwirft „Owner’s Manual“. Offene Suche braucht Ranking, nicht Ausschluss.
 - **Ergebnis:** Ursachenanalyse und D8 dokumentiert; Implementierung und Evaluation offen.
 - **Nächste Schritte:** D8-Entscheidung herbeiführen und bei Zustimmung stufenweise umsetzen (Query-Builder, offene Suche, Ranking, Fallbacks, Cache), Benchmark in `EVALUATION.md` §6.4 messen, `DOKUMENTATION.md` §5.5/§7.4 und Thesis 7.4 nachziehen.
+
+---
+
+## S25 — 26.10.2026 · D8 umsetzen (offene Websuche mit Trust-Ranking)
+
+- **Ziel:** Die Domain-Allowlist der Websuche durch die in D8 beschlossene offene Suche mit Intent-/Trust-Ranking ersetzen (alle drei Stufen).
+- **Durchgeführt:**
+  - **Stufe A:** `functions/sources.js` — Marken-Inferenz (`latitude`→Dell u. a.), Query-Builder mit Marke + de/en-Dokumentations-/Reparaturbegriffen, Denylist (Marktplätze/Preisvergleich/Shop/SEO), Intent-Filter um Dokumentationsbegriffe erweitert.
+  - **Stufe B:** Trust-Ranking (Herstellerdomain, iFixit/Repair, Geräte-Token, PDF/Support-URL, Tavily-Score) statt Ausschluss; nur eindeutiger Müll fliegt raus.
+  - **Stufe C:** Quellenhierarchie im RAG-Prompt (Herstellerhandbuch > iFixit/Reparatur > Archiv > Fachartikel), `kind`-Durchreichung über `/api/ai`, Quellentyp-Badges im `AiPanel`, Cache pro Query (Cache API), optionale Zweitsuche bei < 2 Treffern, offener Google-Fallback statt site-restricted.
+- **Entscheidungen:** D8 von „vorgeschlagen“ auf „aktiv (umgesetzt)“ gesetzt.
+- **Validierung:** Isolierte Node-Tests der puren Funktionen (Marken-Inferenz, Query-Builder, Ranking, Prompt) — 23/23 bestanden; `npm run build` erfolgreich.
+- **Fehler/Erkenntnis:** Die Allowlist optimierte Precision, erzeugte aber systematische False Negatives über alle Gerätekategorien (nicht nur „latitude 7420“): Herstellerhandbücher, Nicht-IT-Kategorien und fremdsprachige Geräte waren strukturell ausgeschlossen. Recall kommt aus der offenen Suche, Precision aus dem Ranking.
+- **Ergebnis:** Offene, gerankte Websuche umgesetzt; Live-Messung gegen Tavily steht aus.
+- **Nächste Schritte:** Benchmark in `EVALUATION.md` §6.4 (erweitertes Testset) mit echtem Tavily-Zugriff messen; Prompt-/Ranking-Feinschliff auf Basis der Live-Treffer.
 
 ---
 

@@ -134,13 +134,21 @@ Qualitative Beobachtungen aus realer Nutzung (z. B. Subreddit-Mismatch, fehlende
 
 ### 6.4 Websuche — geplante Messung (D8)
 
-**Status:** `[OFFEN]` — D8 vorgeschlagen, Entscheidung/Umsetzung ausstehend.
+**Status:** D8 umgesetzt (2026-10-26); Live-Messung mit Tavily ausstehend.
 
-**Testset (Vorschlag):** Dell Latitude 7420, iPhone 14 Pro, MacBook Pro 13, Samsung Galaxy S21, Sony WH-1000XM4, Bosch Serie 6 (präzisiert als Waschmaschine), A2890, Waschmaschine Bosch.
+**Testset (erweitert, ADR D8):** mindestens ein Gerät je Elektroaltgeräte-Kategorie plus Sprach- und Obsolet-Fälle —
+- IT & Telekom: Dell Latitude 7420, iPhone 14 Pro, MacBook Pro 13, Samsung Galaxy S21, Sony WH-1000XM4
+- Großgeräte: Bosch Serie 6 (Waschmaschine), Kühlschrank (z. B. Bosch/Siemens)
+- Kleingeräte: DeLonghi/Jura Kaffeemaschine, Toaster/Mixer
+- Bildschirme: Dell/LG-Monitor
+- Lampen: Philips Hue/LED
+- Wärmeüberträger: Daikin/Vaillant Wärmepumpe
+- Sprache: Xiaomi (CN), Sony (JP), rein englisch dokumentiertes Gerät
+- Obsolet: alte Digitalkamera (nur Internet Archive)
 
 **Pro Fall erfassen:** verwendete Query, Top-5-Quellen mit Domain und Typ, offizielles Herstellerhandbuch in Top 5 (ja/nein), Precision@5 (manuelle Prüfung), Nulltreffer (ja/nein), Latenz, Tavily-Credits.
 
-**Varianten:** (A) bisherige Domain-Allowlist, (B) offene Suche ohne Ranking, (C) offene Suche + Trust-Ranking, (D) zusätzlich Marken-Inferenz und bilinguale Dokumentationsbegriffe.
+**Varianten:** (A) bisherige Domain-Allowlist (Baseline), (B) offene Suche ohne Ranking, (C) offene Suche + Trust-Ranking, (D) zusätzlich Marken-Inferenz und bilinguale Dokumentationsbegriffe. Umgesetzt ist (C)+(D); (A) dient als Vergleichsbasis.
 
 | ID | Datum | Gerät | Variante | Query | Offizielles Handbuch in Top 5 | Precision@5 | Nulltreffer | Latenz (s) | Credits | Anmerkung |
 |---|---|---|---|---|---|---|---|---|---|---|

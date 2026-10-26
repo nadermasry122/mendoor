@@ -114,11 +114,10 @@ export async function requestAiGuide(device, { signal } = {}) {
   return data;
 }
 
-/* Fallback: site-beschränkte Google-Suche (Link-out statt API). */
-export function buildSiteRestrictedSearchUrl(device, domains) {
+/* Fallback: offene Google-Suche (Link-out statt API, ADR D8). */
+export function buildGoogleFallbackUrl(device) {
   const term = bestSearchTerm(device);
-  const siteFilter = `(${domains.map((d) => `site:${d}`).join(' OR ')})`;
-  return `https://www.google.com/search?q=${encodeURIComponent(`${term} Reparatur ${siteFilter}`)}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(`${term} Reparatur Bedienungsanleitung`)}`;
 }
 
 /* ── Reddit-Link-outs (kein API-Call, ADR D2) ── */

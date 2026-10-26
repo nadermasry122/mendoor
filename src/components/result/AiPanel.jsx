@@ -14,8 +14,17 @@ import { FormattedText } from '../ui/FormattedText.jsx';
 const SOURCE_LABELS = {
   ifixit: 'iFixit',
   archive: 'Archiv',
-  web: 'Web',
 };
+const WEB_KIND_LABELS = {
+  manual: 'Herstellerhandbuch',
+  repair: 'Reparatur',
+  article: 'Web',
+};
+
+function sourceLabel(source) {
+  if (source.type === 'web') return WEB_KIND_LABELS[source.kind] || 'Web';
+  return SOURCE_LABELS[source.type] || source.type;
+}
 
 function errorText(error) {
   if (!error) return 'Die KI-Assistenz ist gerade nicht erreichbar.';
@@ -131,8 +140,8 @@ export function AiPanel({ device }) {
                     <a href={source.url} target="_blank" rel="noopener noreferrer">
                       {source.title}
                     </a>
-                    <span className="ai-panel__source-type">
-                      {SOURCE_LABELS[source.type] || source.type}
+                    <span className={`ai-panel__source-type ai-panel__source-type--${source.kind || source.type}`}>
+                      {sourceLabel(source)}
                     </span>
                   </li>
                 ))}

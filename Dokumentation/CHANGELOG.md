@@ -102,6 +102,7 @@ Neue kleine Änderungen werden hier oben eingetragen (neueste zuerst). Große Ä
 
 | Datum | Bereich | Änderung |
 |---|---|---|
+| 2026-10-26 | Websuche | ADR D8 umgesetzt: offene Tavily-Suche mit Intent-/Trust-Ranking, Marken-Inferenz, Denylist, Cache, Zweitsuche, Quellenhierarchie im Prompt, Quellentyp-Badges |
 | 2026-10-26 | Doku | Nicht umgesetzte Features aus der Doku entfernt (lokale KI-Speicherung, Geräteherkunft/Kategorie, dynamische Quellenlage) und Ist-Stand angeglichen |
 | 2026-10-21 | Ergebnis-Screen | Disclosure-Panel wächst mit Inhalt; OCR-Kandidatenranking; iFixit-Relevanzfilter; Prompt-Regel gegen gerätefremde Quellen (Commit `092b63f`) |
 | 2026-10-21 | Suche | `bestSearchTerm` behält den Modellcode, wenn nur noch die Marke übrig bleibt (`Sony WH-1000XM4` statt `Sony`) (Commit `2921d5b`) |
