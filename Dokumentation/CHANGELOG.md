@@ -1,6 +1,6 @@
-# Changelog — mendooR
+# Changelog - mendooR
 
-> **Zweck:** Überblick über **kleine** Änderungen — ohne Redundanz, eine Zeile pro Eintrag.
+> **Zweck:** Überblick über **kleine** Änderungen - ohne Redundanz, eine Zeile pro Eintrag.
 > **Nicht hier:** Große Änderungen und Entscheidungen → `ENTSCHEIDUNGEN.md`. Sitzungsverlauf → `PROTOKOLLE.md`.
 > **Format:** `Datum · Bereich · Änderung · (Commit)`
 > **Stand:** 20.10.2026
@@ -12,14 +12,11 @@
 ### 2026-10-20
 | Datum | Bereich | Änderung | Commit |
 |---|---|---|---|
-| 2026-10-20 | Doku | ADR D6 (KI-Assistenz: RAG-first, dann Workers AI) ergänzt; KI-Vergleich und Browserangaben präzisiert | — |
-| 2026-10-20 | RAG | `functions/sources.js` (iFixit/Archiv/Tavily-Retrieval) und `functions/rag.js` (Quellen-Prompt) ergänzt | — |
-| 2026-10-20 | Worker | `/api/ai` mit Timeout, Debug-Modus und Teilquellen-Fallback; `AI`-Binding in `wrangler.jsonc` | — |
-| 2026-10-20 | UI | Optionaler KI-Eintrag `AiPanel` inkl. Quellenliste, Lade-/Fehlerzustand und CSS | — |
+| 2026-10-20 | Doku | ADR D6 (KI-Assistenz: RAG-first, dann Workers AI) ergänzt; KI-Vergleich und Browserangaben präzisiert | - |
+| 2026-10-20 | RAG | `functions/sources.js` (iFixit/Archiv/Tavily-Retrieval) und `functions/rag.js` (Quellen-Prompt) ergänzt | - |
+| 2026-10-20 | Worker | `/api/ai` mit Timeout, Debug-Modus und Teilquellen-Fallback; `AI`-Binding in `wrangler.jsonc` | - |
+| 2026-10-20 | UI | Optionaler KI-Eintrag `AiPanel` inkl. Quellenliste, Lade-/Fehlerzustand und CSS | - |
 | 2026-10-20 | Doku | ADR D7, DOKUMENTATION §3.3, Protokoll S21 und Thesis 7.5 ergänzt | — |
-| 2026-10-20 | Ergebnis-Screen | Geräteherkunft (OCR/Manuell/Demo) und Kategorie dynamisch; „Zuletzt verwendet“ korrigiert | — |
-| 2026-10-20 | Ergebnis-Screen | Statische Materialkacheln durch kompakten iFixit-Quellenstrip ersetzt | — |
-| 2026-10-20 | KI | Lokales Speichern der KI-Ergebnisse (`localStorage`), Detailansicht und Startseiten-Liste | — |
 
 ### 2026-09-25
 | Datum | Bereich | Änderung | Commit |
@@ -52,7 +49,7 @@
 |---|---|---|---|
 | 2026-07-23 | Community | Erste Reddit-API-Anbindung | `900e106` |
 
-### 2026-07-20 – 2026-07-22
+### 2026-07-20 - 2026-07-22
 | Datum | Bereich | Änderung | Commit |
 |---|---|---|---|
 | 2026-07-22 | Kamera-UI | Kamera-Oberfläche überarbeitet | `0d1fb05` |
@@ -89,7 +86,7 @@
 | 2026-07-09 | Deploy | Cloudflare-Workers-Konfiguration ergänzt | `db3a47c` |
 | 2026-07-09 | Backend | `ping.js` erstellt | `f5d53ed` |
 
-### 2026-06-25 – 2026-06-26
+### 2026-06-25 - 2026-06-26
 | Datum | Bereich | Änderung | Commit |
 |---|---|---|---|
 | 2026-06-26 | App | `app.js` aktualisiert | `7ff595b` |
@@ -105,6 +102,7 @@ Neue kleine Änderungen werden hier oben eingetragen (neueste zuerst). Große Ä
 
 | Datum | Bereich | Änderung |
 |---|---|---|
+| 2026-10-26 | Doku | Nicht umgesetzte Features aus der Doku entfernt (lokale KI-Speicherung, Geräteherkunft/Kategorie, dynamische Quellenlage) und Ist-Stand angeglichen |
 | 2026-10-21 | Ergebnis-Screen | Disclosure-Panel wächst mit Inhalt; OCR-Kandidatenranking; iFixit-Relevanzfilter; Prompt-Regel gegen gerätefremde Quellen (Commit `092b63f`) |
 | 2026-10-21 | Suche | `bestSearchTerm` behält den Modellcode, wenn nur noch die Marke übrig bleibt (`Sony WH-1000XM4` statt `Sony`) (Commit `2921d5b`) |
 | 2026-10-21 | Websuche | Web-Quellen live analysiert; Domain-Allowlist als Ursache fehlender Herstellerhandbücher identifiziert (siehe ADR D8, Vorschlag) |
@@ -120,7 +118,7 @@ Neue kleine Änderungen werden hier oben eingetragen (neueste zuerst). Große Ä
 | 2026-10-01 | Design | 5-Farben-Tokensystem; Styles in `tokens`/`base`/`components`/`screens` getrennt (siehe ADR C7) |
 | 2026-10-01 | Deploy | Asset-Verzeichnis in `wrangler.jsonc` von `./test` auf `./dist` umgestellt |
 | 2026-10-01 | Tooling | `package.json` + `vite.config.js` angelegt; `.gitignore` um `node_modules/`, `dist/`, `.wrangler/` ergänzt |
-| 2026-10-01 | Doku | `QUELLEN.md` um Q25–Q28 ergänzt; Thesis-Abschnitt 5.1/5.2 an React-Struktur angeglichen |
+| 2026-10-01 | Doku | `QUELLEN.md` um Q25-Q28 ergänzt; Thesis-Abschnitt 5.1/5.2 an React-Struktur angeglichen |
 | 2026-10-01 | Security | Kontrolle: keine Secrets in den neuen Dateien; `.gitignore` unverändert streng |
 | 2026-09-29 | Doku | Projektverlauf ausgewertet; `REGELN.md`, `ENTSCHEIDUNGEN.md`, `PROTOKOLLE.md`, `CHANGELOG.md` angelegt |
 | 2026-09-29 | Doku | `QUELLEN.md` (Master-Register, stabile `[Qn]`) und `EVALUATION.md` (Erfassungsschema) angelegt |

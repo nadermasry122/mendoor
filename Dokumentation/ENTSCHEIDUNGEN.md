@@ -35,7 +35,7 @@
 | D4 | Tavily statt Google CSE / SearXNG | aktiv | 6.4 |
 | D5 | Suchbegriffsbildung (`bestSearchTerm`) | aktiv | 6.5 |
 | D6 | KI-Assistenz: RAG-first, dann Cloudflare Workers AI | aktiv (Stufe 1+2 umgesetzt; Tool-Calling offen) | 7.5, 9.3 |
-| D7 | RAG-Orchestrierung, KI-Eintrag und lokale Speicherung (Umsetzung D6) | aktiv (umgesetzt; Evaluation offen) | 7.5 |
+| D7 | RAG-Orchestrierung und KI-Eintrag (Umsetzung D6) | aktiv (umgesetzt; Evaluation offen) | 7.5 |
 | E1 | Iteratives, sitzungsbasiertes Vorgehen | aktiv | 3.x (neu) |
 | E2 | Quellenhierarchie für Designfragen | aktiv | 4.x (neu) |
 | E3 | Fehlerdokumentation nach festem Schema | aktiv | 7 |
@@ -367,25 +367,21 @@
   - **Umsetzungsstand:** Stufe 1+2 sind umgesetzt (`functions/sources.js`, `functions/rag.js`, `/api/ai`, `AI`-Binding, `AiPanel`). Tool-Calling (Stufe 3) und die Evaluation bleiben offen.
 - **Quellen:** [Q32]–[Q48], [Q51], [Q52].
 
-### D7 — RAG-Orchestrierung, KI-Eintrag und lokale Speicherung (Umsetzung von D6)
+### D7 — RAG-Orchestrierung und KI-Eintrag (Umsetzung von D6)
 - **Status:** aktiv (umgesetzt; Evaluation offen)
 - **Datum:** 2026-10-20
 - **Thesis-Kapitel:** 7.5
-- **Kontext:** D6 legte RAG-first und Cloudflare Workers AI fest. Für die Umsetzung war zu entscheiden: (a) Wo läuft das Retrieval? (b) Welches Modell? (c) Wie wird die KI im UI zugänglich? (d) Wie verhält sie sich ohne Quellen oder bei Fehlern? (e) Wie werden Ergebnisse lokal gespeichert? (f) Wie werden Herkunft und Quellenlage ohne statische Platzhalter dargestellt?
-- **Optionen:** (1) Client-Retrieval + Worker-Synthese, (2) Server-Retrieval + Worker-Synthese, (3) automatische Generierung beim Screen-Aufbau vs. manueller Button, (4) gpt-oss-20b vs. Qwen3-30B-A3B vs. Llama 3.1 8B als Modell, (5) lokale Speicherung per `localStorage` vs. Server/IndexedDB, (6) statische Materialwerte vs. dynamische Quellenlage.
+- **Kontext:** D6 legte RAG-first und Cloudflare Workers AI fest. Für die Umsetzung war zu entscheiden: (a) Wo läuft das Retrieval? (b) Welches Modell? (c) Wie wird die KI im UI zugänglich? (d) Wie verhält sie sich ohne Quellen oder bei Fehlern?
+- **Optionen:** (1) Client-Retrieval + Worker-Synthese, (2) Server-Retrieval + Worker-Synthese, (3) automatische Generierung beim Screen-Aufbau vs. manueller Button, (4) gpt-oss-20b vs. Qwen3-30B-A3B vs. Llama 3.1 8B als Modell.
 - **Entscheidung:**
   1. **Serverseitiges Retrieval:** `functions/sources.js` ruft iFixit, Internet Archive und Tavily ab; `functions/rag.js` normalisiert, filtert, dedupliziert und begrenzt die Quellen. `/api/ai` baut daraus den Prompt und ruft Workers AI auf.
   2. **Modell:** `@cf/openai/gpt-oss-20b` mit `max_tokens: 800`, `temperature: 0.2` und `reasoning.effort: low`.
   3. **UI:** Optionaler, eingeklappter KI-Eintrag (`AiPanel`) in der Quellenliste des Ergebnis-Screens; ein Klick öffnet ihn, ein weiterer startet die RAG-Kette. Die bereitgestellten Quellen werden unter der Antwort mit `[1]`, `[2]` … aufgelistet und verlinkt.
   4. **Fallback:** Ohne Quellen keine generative Antwort; bei AI-Fehler/Timeout bleiben die normalen Quellenlisten nutzbar. `?debug=1` liefert Retrieval + Prompt ohne AI-Aufruf (POST oder GET mit `device`).
-  5. **Lokale Speicherung:** KI-Ergebnisse können manuell im Browser-`localStorage` gespeichert werden (`mendoor.ai.saved.v1`, max. 20 Einträge, ein Eintrag pro Gerät). Eine Detailansicht und eine Liste auf der Startseite machen sie wieder zugänglich.
-  6. **Dynamische UI:** Die Geräteherkunft (`ocr`/`manual`/`demo`) wird im AppContext geführt und in Produktkarte sowie „Zuletzt verwendet“ angezeigt. Die statischen Materialwerte werden durch eine kompakte, aus iFixit-Treffern berechnete Quellenlage ersetzt.
 - **Begründung:**
   - **Server-Retrieval** stellt sicher, dass nur validierte, begrenzte Quellen an das Modell gelangen. Der Client sendet keine fremden Kontexte und keine Schlüssel; die Logik liegt an einer Stelle und nutzt das bestehende Worker-Muster (A3).
   - **gpt-oss-20b** ist Apache-2.0, hat 128k Kontext und Function Calling; das Reasoning-Level ist explizit steuerbar. Qwen3-30B-A3B ist günstiger, aber Thinking-Modus und deutsche Qualität sind nicht evaluiert; Llama 3.1 8B hat in der geprüften Katalogvariante kein Function Calling und bleibt Baseline.
-  - **Manueller Button** kontrolliert die Neurons-Kosten: Nicht jeder Aufruf des Ergebnis-Screens löst eine KI-Anfrage aus. Die Quellenlage bleibt auch ohne KI lesbar.
-  - **Lokale Speicherung** kommt ohne Konto, Server und Synchronisation aus (NFA-01, NFA-07): Die Daten bleiben auf dem Gerät, der Nutzer entscheidet explizit über das Speichern. `localStorage` ist für wenige Text-Einträge ausreichend; IndexedDB wäre für den MVP überdimensioniert.
-  - **Dynamische Quellenlage statt Materialschätzung:** Für Gold-/Metallwerte pro Gerät liegt keine belastbare Datenbasis vor; [Q1] nennt nur globale Aggregate. Die bisherigen Zahlen waren Platzhalter. Die neue Zeile zeigt stattdessen echte iFixit-Treffer und das niedrigste Schwierigkeitsniveau.
+  - **Manueller Button** kontrolliert die Neurons-Kosten: Nicht jeder Aufruf des Ergebnis-Screens löst eine KI-Anfrage aus. Die Quellenlisten bleiben auch ohne KI lesbar.
 - **Verworfene Alternativen:**
 
 | Alternative | Warum verworfen |
@@ -396,20 +392,15 @@
 | **Llama 3.1 8B als Erstmodell** | Kein Function-Calling-Merkmal in der geprüften Katalogvariante; nur als RAG-Baseline geeignet. |
 | **Tool-Calling/ReAct sofort** | Function Calling ist Beta [Q35]; mehrere Calls erhöhen Latenz/Kosten und erschweren die Fehlersuche. Stufe 3 nach der Evaluation. |
 | **Streaming sofort** | Verbessert die wahrgenommene Latenz, erfordert aber SSE-Parsing und zusätzliche Fehlerpfade. Für die erste funktionale Version nicht nötig. |
-| **Automatisches Speichern jedes KI-Ergebnisses** | Würde den lokalen Speicher ohne Nutzerentscheidung füllen und die Auswahl unübersichtlich machen. Speichern bleibt ein expliziter Button. |
-| **Server-/Konto-Synchronisation der KI-Ergebnisse** | Erfordert Konten, Serverhaltung und DSGVO-Abwägung; für den MVP nicht nötig. |
-| **IndexedDB statt localStorage** | Mehr Komplexität für wenige Text-Einträge; `localStorage` reicht bei max. 20 Einträgen. |
-| **Statische Materialwerte beibehalten** | Keine per-Gerät-Datenbasis; die Zahlen wären erfunden. Materialdaten bleiben als „Zusammensetzung“-Platzhalter offen. |
 
 - **Konsequenzen / Grenzen:**
-  - **Umsetzung:** `functions/sources.js`, `functions/rag.js`, `functions/_worker.js` (`/api/ai`), `wrangler.jsonc` (`ai`-Binding), `src/lib/api.js`, `src/components/result/AiPanel.jsx`, `src/lib/savedAi.js`, `src/components/result/SavedAiDetailScreen.jsx`, `src/lib/device.js`, `src/styles/screens.css`.
-  - **Teststand:** `npm run build` und `wrangler deploy --dry-run` erfolgreich; `POST /api/ai?debug=1` liefert im lokalen Worker Quellen und Prompt. Die Speicherlogik wurde isoliert mit einem `localStorage`-Mock geprüft (Speichern, Laden, Löschen). Ein echter AI-Aufruf war in dieser Umgebung nicht möglich, weil Wrangler nicht authentifiziert ist und das AI-Binding lokal „not supported“ meldet. Bei einer Ablehnung des optionalen Reasoning-Parameters wiederholt der Worker den Aufruf einmal ohne ihn.
+  - **Umsetzung:** `functions/sources.js`, `functions/rag.js`, `functions/_worker.js` (`/api/ai`), `wrangler.jsonc` (`ai`-Binding), `src/lib/api.js`, `src/components/result/AiPanel.jsx`, `src/styles/screens.css`.
+  - **Teststand:** `npm run build` und `wrangler deploy --dry-run` erfolgreich; `POST /api/ai?debug=1` liefert im lokalen Worker Quellen und Prompt. Ein echter AI-Aufruf war in dieser Umgebung nicht möglich, weil Wrangler nicht authentifiziert ist und das AI-Binding lokal „not supported“ meldet. Bei einer Ablehnung des optionalen Reasoning-Parameters wiederholt der Worker den Aufruf einmal ohne ihn.
   - **Retrieval-Qualität:** Archive-Treffer können Rauschen enthalten (Gerichtsakten werden gefiltert, generische Dokumente bleiben möglich). Die Quellenbegrenzung und der Prompt reduzieren, beseitigen das Risiko aber nicht.
   - **Evaluation:** Deutsche Sprachqualität, Fakten-Treue und Quellenabdeckung sind `[OFFEN]`; Messaufbau in `EVALUATION.md`.
   - **Kosten/Latenz:** Kein Cache; wiederholte Klicks rufen Quellen erneut ab und verbrauchen Neurons. Cloudflare-Cache/KV und Streaming sind spätere Optimierungen.
-  - **Datenschutz:** Quellen und Gerätekontext gehen an Cloudflare; die OCR-Bilder bereits an Google. Gespeicherte KI-Ergebnisse bleiben lokal, sind aber nicht verschlüsselt und gehen bei gelöschten Browserdaten verloren. DSGVO-/AVV-Prüfung bleibt offen.
-  - **Materialdaten:** Die dynamische Quellenlage ersetzt keine Material-/Edelmetallschätzung; diese bleibt als eigenständige Datenaufgabe offen.
-- **Quellen:** [Q1], [Q14], [Q15], [Q32]–[Q48], [Q51], [Q52].
+  - **Datenschutz:** Quellen und Gerätekontext gehen an Cloudflare; die OCR-Bilder bereits an Google. DSGVO-/AVV-Prüfung bleibt offen.
+- **Quellen:** [Q32]–[Q48], [Q51], [Q52].
 
 ### D8 — Offene Websuche mit Trust-Ranking statt Domain-Allowlist
 - **Status:** vorgeschlagen; Entscheidung und Umsetzung ausstehend

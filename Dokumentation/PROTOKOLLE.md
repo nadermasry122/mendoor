@@ -31,7 +31,6 @@
 | S19 | 01.10.2026 | Responsive-Überarbeitung, System-UI entfernt | Fluide Web-Oberfläche mit Breakpoints | C9 |
 | S20 | 20.10.2026 | KI-Optionen prüfen, Assistenzschicht entscheiden | RAG-first, dann Cloudflare Workers AI | D6 |
 | S21 | 20.10.2026 | RAG + Workers AI implementieren, KI-Eintrag bauen | `/api/ai`, RAG-Retrieval, AiPanel, Doku | D7 |
-| S22 | 20.10.2026 | Ergebnis-Screen: Herkunft, Quellenlage, lokale KI-Speicherung | Dynamische Labels, Quellenstrip, Speichern/Detail | D7 (erweitert) |
 | S23 | 21.10.2026 | Ergebnis-Screen: Scrollen, Quellenrelevanz, Build-Prüfung | Scrollfix, Kandidatenranking, iFixit-Filter; Commit `092b63f` | — |
 | S24 | 21.10.2026 | Websuche: Domain-Allowlist und offene Suche | D8 vorgeschlagen: offene Suche + Trust-Ranking | D8 (Vorschlag); D4 zur Ablösung vorgeschlagen |
 
@@ -228,18 +227,6 @@
 - **Fehler/Erkenntnis:** `wrangler dev --local` meldet „Binding AI needs to be run remotely“; der echte AI-Aufruf ist lokal nicht möglich. Der Debug-Modus trennt Retrieval/Prompt sauber vom Modellaufruf. Ohne Quellen darf keine generative Antwort entstehen. Ein direkter Browser-Aufruf von `/api/ai` ist ein **GET** und damit kein AI-Aufruf; der Endpunkt akzeptiert POST für AI und GET nur mit `?device=…&debug=1`. Bare GET liefert jetzt eine Nutzungshilfe (400) statt „Method not allowed“.
 - **Ergebnis:** Funktionale RAG-Kette und optionaler KI-Eintrag; der echte Workers-AI-Aufruf ist noch nicht gegen ein authentifiziertes Konto getestet. Evaluation offen.
 - **Nächste Schritte:** Deployment mit `AI`-Binding und Tavily-Key; echten AI-Aufruf testen; deutsche Qualität/Quellenabdeckung evaluieren; danach Tool-Calling und Caching/Streaming prüfen.
-
----
-
-## S22 — 20.10.2026 · Ergebnis-Screen: Herkunft, Quellenlage, lokale KI-Speicherung
-
-- **Ziel:** Fehlende Unterscheidung zwischen OCR und manueller Eingabe beheben; statische Materialwerte durch eine echte, kompakte Quellenlage ersetzen; KI-Ergebnisse lokal speicherbar machen.
-- **Durchgeführt:** `AppContext` um `currentDeviceSource` erweitert; `openDevice(name, source)` und Recent-Scan-Metadaten angepasst; `ScannerScreen` übergibt `manual`/`ocr`; `HomeScreen` öffnet Recent-Einträge mit ihrer Quelle; `ProductCard` zeigt Herkunft, Kategorie und iFixit-Status dynamisch; `ScoreRow` durch einen kompakten Quellenstrip ersetzt; `lib/device.js` (Kategorie-Heuristik) und `lib/savedAi.js` (`localStorage`, max. 20) ergänzt; `AiPanel` um Speichern/Entfernen erweitert; `SavedAiDetailScreen` und Startseiten-Liste gebaut.
-- **Entscheidungen:** D7 erweitert (lokale Speicherung, dynamische Quellenlage, keine statischen Materialwerte).
-- **Validierung:** `npm run build` erfolgreich; Speicherlogik isoliert mit `localStorage`-Mock geprüft (Speichern, Laden, Löschen); Kategorie-/Herkunftsfunktionen stichprobenartig geprüft.
-- **Fehler/Erkenntnis:** Die statischen Metall-/Goldwerte hatten keine per-Gerät-Datenbasis; sie wurden entfernt statt durch neue Fantasiezahlen ersetzt. Die Herkunft muss am Eingabepfad mitgeführt werden, sonst bleibt sie in Produktkarte und Recent-Liste falsch. Lokale Speicherung ist gerätegebunden und nicht synchronisiert.
-- **Ergebnis:** Herkunft und Quellenlage sind dynamisch, die Kacheln sind kompakter, KI-Ergebnisse können gespeichert und über die Startseite wieder geöffnet werden.
-- **Nächste Schritte:** Browser-Test der neuen Ansichten; optional gerätebezogene Materialdaten ergänzen; gespeicherte Einträge bei Bedarf exportierbar machen.
 
 ---
 

@@ -366,8 +366,6 @@ Die bisherigen Quellen liefern einzelne Treffer, aber keine zusammenhängende, q
 
 **Warum serverseitig?** Die Zielgruppe sind alte und obsolete Geräte. Eine lokale Ausführung im Browser würde genau diese Geräte ausschließen: Sie setzt WebGPU, mehrere hundert Megabyte bis Gigabyte Modell-Download, zusätzlichen Arbeitsspeicher und Akkuleistung voraus; mobil sind überwiegend kleine Modelle realistisch, und Function Calling ist in WebLLM noch nicht ausgereift [Q40], [Q42]. Zudem benötigt die Anwendung ohnehin eine Netzverbindung für OCR und Quellen; ein lokales Modell würde den Offline-Vorteil daher kaum einlösen. Die serverseitige Variante hält den Client dünn und die Modellversion einheitlich. Cloudflare verarbeitet Standard-Inferenzen ohne dauerhafte Speicherung und trainiert nicht mit Kundendaten [Q37]; eine datenschutzrechtliche Prüfung bleibt dennoch erforderlich.
 
-**Lokale Speicherung.** Eine erzeugte Einschätzung kann auf Wunsch lokal im Browser gespeichert werden (`localStorage`, maximal 20 Einträge, ein Eintrag pro Gerät). Eine Detailansicht und eine Liste auf der Startseite machen sie wieder zugänglich. Die Speicherung ist geräte- und browsergebunden, wird nicht synchronisiert und ist nicht verschlüsselt; beim Löschen der Browserdaten gehen die Einträge verloren. Der Button ist bewusst explizit, damit nicht jede KI-Antwort ungefragt gespeichert wird.
-
 **Offene Punkte.** Deutsche Sprachqualität, Fakten-Treue und Quellenabdeckung sind noch nicht systematisch gemessen. Prompt-Injection aus fremden Quellen wird durch Delimiting und Systemregeln reduziert, aber nicht beseitigt. Caching, Streaming und Tool-Calling sind bewusst noch nicht umgesetzt. Der Messaufbau für diese Punkte ist in Kapitel 8 und in `EVALUATION.md` beschrieben.
 
 ---

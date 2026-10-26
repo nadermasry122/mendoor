@@ -159,10 +159,8 @@ Cloudflare Worker (functions/_worker.js)
 | `functions/_worker.js` | `/api/ai`, Timeout, Debug-Modus, Fehlerantworten |
 | `src/lib/api.js` | `requestAiGuide()` für den Client |
 | `src/components/result/AiPanel.jsx` | Optionaler KI-Eintrag in der Quellenliste des Ergebnis-Screens |
-| `src/lib/savedAi.js` | Lokale Speicherung der KI-Ergebnisse (`localStorage`, max. 20) |
-| `src/components/result/SavedAiDetailScreen.jsx` | Detailansicht eines gespeicherten KI-Ergebnisses |
 
-**Modell:** `@cf/openai/gpt-oss-20b` (Apache-2.0), `max_tokens: 800`, `temperature: 0.2`, `reasoning.effort: low`. Das Modell antwortet ausschließlich auf Basis der übergebenen Quellen und soll Lücken ausdrücklich benennen. Der Button „Einschätzung erstellen“ im KI-Eintrag startet die Kette **manuell**; er löst das Retrieval aus, bei vorhandenen Quellen folgt der AI-Aufruf. Das kontrolliert Neurons-Kosten und Latenz. Nach Erfolg kann die Antwort lokal im Browser gespeichert werden (`localStorage`, max. 20 Einträge, ein Eintrag pro Gerät); eine Detailansicht und eine Startseiten-Liste machen sie wieder zugänglich.
+**Modell:** `@cf/openai/gpt-oss-20b` (Apache-2.0), `max_tokens: 800`, `temperature: 0.2`, `reasoning.effort: low`. Das Modell antwortet ausschließlich auf Basis der übergebenen Quellen und soll Lücken ausdrücklich benennen. Der Button „Einschätzung erstellen“ im KI-Eintrag startet die Kette **manuell**; er löst das Retrieval aus, bei vorhandenen Quellen folgt der AI-Aufruf. Das kontrolliert Neurons-Kosten und Latenz.
 
 **Umsetzungsstufen:**
 
@@ -317,11 +315,11 @@ Die Markenliste blieb erhalten, wurde aber von einer **Voraussetzung** zu einem 
 - **Suchkaskade** (für iFixit und Community) - von spezifisch zu breit: (1) voller String → (2) erste zwei Tokens → (3) erstes Token → (4) Modellcode-Token. Erster Schritt mit Treffern gewinnt.
 - Grund für die Kaskade: Vollständige Modellnummern treten in informellen Forenbeiträgen selten wörtlich auf und schränken die Trefferzahl unnötig ein.
 
-### 5.6 Geräteherkunft und dynamische Quellenlage
+### 5.6 Geräteherkunft, Kategorie und Quellenlage (Ist-Stand)
 
-- **Herkunft:** Der AppContext führt zusätzlich zur Gerätebezeichnung die Quelle (`ocr`, `manual`, `demo`). Produktkarte und „Zuletzt verwendet“ zeigen dadurch „Erkannt via OCR-Scan“, „Manuell eingegeben“ oder „Beispielgerät“ statt einer pauschalen OCR-Angabe. Beim Öffnen eines Eintrags aus „Zuletzt verwendet“ wird das Gerät samt Quelle wieder geladen.
-- **Kategorie:** `src/lib/device.js` liefert eine kleine UI-Heuristik für Label und Icon (Smartphone, Laptop, Kamera, Haushaltsgerät, Lampe, Bildschirm); bei unbekannten Geräten steht neutral „Gerät“. Das ist keine fachliche Klassifikation.
-- **Quellenlage:** Die früheren statischen Kacheln („Reparierbar“, „Metalle“, „Gold“) hatten keine per-Gerät-Datenbasis. `ScoreRow` zeigt jetzt eine kompakte Zeile aus den tatsächlich geladenen iFixit-Treffern: Anzahl der Anleitungen, niedrigstes Schwierigkeitsniveau und Quelle. Material-/Edelmetallwerte bleiben als eigenständige Datenaufgabe offen.
+- **Herkunft:** Eine Unterscheidung der Geräteherkunft (`ocr`/`manual`/`demo`) wird derzeit **nicht** geführt; die Produktkarte zeigt pauschal „Erkannt via OCR-Scan“.
+- **Kategorie:** Kategorie-Label und -Icon sind statisch („Smartphone“); eine gerätebezogene Heuristik (`src/lib/device.js`) existiert nicht.
+- **Quellenlage:** `ScoreRow` zeigt weiterhin **statische Platzhalterwerte** („Reparierbar“, „Metalle“, „Gold“). Eine aus iFixit-Treffern berechnete, dynamische Quellenlage ist nicht umgesetzt; belastbare Material-/Edelmetallwerte pro Gerät bleiben als eigenständige Datenaufgabe offen.
 
 ---
 
@@ -331,11 +329,10 @@ Die Markenliste blieb erhalten, wurde aber von einer **Voraussetzung** zu einem 
 
 | Screen | Funktion |
 |---|---|
-| **Start** | Kamera-Scanner (im Vordergrund), Kategorien, "Zuletzt verwendet", gespeicherte KI-Einschätzungen, Inspiration |
+| **Start** | Kamera-Scanner (im Vordergrund), Kategorien, "Zuletzt verwendet", Inspiration |
 | **Scanner** | Live-Kamera, Scan-Rahmen, Capability-gesteuerte Bedienelemente, OCR-Sheet |
-| **Ergebnis** | Gerätekarte mit Herkunft/Quellenlage, Menü mit Reparatur/Community/Archiv/Websuche/KI/Entsorgung |
+| **Ergebnis** | Gerätekarte, Menü mit Reparatur/Community/Archiv/Websuche/KI/Entsorgung |
 | **Guide-Liste / -Detail** | iFixit-Anleitungen mit DE-Bevorzugung und EN-Fallback |
-| **Gespeicherte KI-Einschätzung** | Lokal gespeicherte Antwort mit Quellen und Löschfunktion |
 | **Community** | (in Disclosure integriert) kuratierte Subreddit-Karten |
 
 ### 6.2 Designentscheidung: Quellen zusammenführen statt trennen
@@ -560,10 +557,10 @@ mendoor/
 │   │   ├── ui/             # UI-Kit: Icon, BottomNav, Disclosure, Sheet, StateBox ...
 │   │   ├── home/           # HomeScreen + Bausteine
 │   │   ├── scanner/        # ScannerScreen, OcrSheet, DebugPanel
-│   │   ├── result/         # ResultScreen, AiPanel, SavedAiDetailScreen + Quellen-Panels
+│   │   ├── result/         # ResultScreen, AiPanel + Quellen-Panels
 │   │   └── guides/         # GuidesScreen, GuideCard, GuideDetailScreen
 │   ├── hooks/              # useCamera, useAsyncData
-│   ├── lib/                # classify, search, capture, api, device, savedAi (reine Logik/Datenzugriff)
+│   ├── lib/                # api, capture, classify, format, guides, search (reine Logik/Datenzugriff)
 │   ├── context/            # AppContext (Navigation, Gerät, Toast)
 │   ├── constants/          # statische UI-Inhalte
 │   ├── styles/             # tokens.css, base.css, components.css, screens.css
@@ -588,10 +585,7 @@ mendoor/
 | `lib/classify.js` | `isRealText`, Prosa-Filter, strukturbasierte Extraktion |
 | `lib/search.js` | `bestSearchTerm`, Suchkaskade, Schwierigkeits-Mapping |
 | `lib/api.js` | Vision-/Archive-/Websearch-Proxy, iFixit, Link-out-URLs, `requestAiGuide()` |
-| `components/result/AiPanel.jsx` | Optionaler KI-Eintrag: Start, Lade-/Fehlerzustand, Antwort + Quellen, lokales Speichern |
-| `components/result/SavedAiDetailScreen.jsx` | Detailansicht eines lokal gespeicherten KI-Ergebnisses |
-| `lib/savedAi.js` | Lokale Speicherung der KI-Ergebnisse (`localStorage`) |
-| `lib/device.js` | UI-Heuristik für Gerätekategorie und Herkunftslabel |
+| `components/result/AiPanel.jsx` | Optionaler KI-Eintrag: Start, Lade-/Fehlerzustand, Antwort + Quellen |
 | `hooks/useAsyncData.js` | Lade-Zustand mit Lazy-Loading |
 | `context/AppContext.jsx` | Navigation, aktuelles Gerät, Toasts |
 | `components/ui/*` | wiederverwendbares UI-Kit |
