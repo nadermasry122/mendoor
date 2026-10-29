@@ -2,7 +2,7 @@
 
 **Bachelorarbeit**
 
-> **Arbeitsstand:** 20.10.2026
+> **Arbeitsstand:** 26.10.2026
 > **Charakter:** Gemeinsam wachsendes Dokument. Bereits freigegebener Text (Kapitel 1–2) wurde unverändert übernommen. Abschnitte ohne Ausgangsmaterial sind als **`[LÜCKE]`** markiert und nicht mit erfundenem Inhalt gefüllt. Noch nicht abgeschlossene Vorgänge sind als **`[OFFEN]`** gekennzeichnet.
 > **Konsistenzhinweis:** Zwischen frühem Konzept und späterer technischer Umsetzung bestehen dokumentierte Abweichungen (insb. Web-App statt Android); sie werden transparent ausgewiesen, nicht stillschweigend korrigiert. Die Kapitelnummerierung wurde gegenüber dem ersten Entwurf erweitert (neue Kapitel 3 „Methodisches Vorgehen" und Abschnitt 5.2 „Gestaltungsgrundlagen").
 

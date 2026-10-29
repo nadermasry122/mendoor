@@ -2,7 +2,7 @@
 
 > **Zweck:** Chronologisches Gedächtnis des Projekts — *was* geschah in welcher Sitzung.
 > **Abgrenzung:** Entscheidungsbegründungen stehen in `ENTSCHEIDUNGEN.md`; kleine Änderungen in `CHANGELOG.md`. Hier nur Ziel, Verlauf, Fehler und Ergebnis.
-> **Hinweis:** Rekonstruiert am 29.09.2026 aus dem Claude-Projektverlauf; S20/S21 am 20.10.2026 ergänzt; S23/S24 am 21.10.2026 ergänzt. Sitzung 1–5 waren teils Konzept-/Recherchesitzungen ohne Codeänderung.
+> **Hinweis:** Rekonstruiert am 29.09.2026 aus dem Claude-Projektverlauf; S20/S21 am 20.10.2026 ergänzt; S23/S24 am 21.10.2026 ergänzt; S25 am 26.10.2026 ergänzt; S26 am 29.10.2026 ergänzt. Sitzung 1–5 waren teils Konzept-/Recherchesitzungen ohne Codeänderung.
 
 ---
 
@@ -281,6 +281,26 @@
 - **Fehler/Erkenntnis:** Die Allowlist optimierte Precision, erzeugte aber systematische False Negatives über alle Gerätekategorien (nicht nur „latitude 7420“): Herstellerhandbücher, Nicht-IT-Kategorien und fremdsprachige Geräte waren strukturell ausgeschlossen. Recall kommt aus der offenen Suche, Precision aus dem Ranking.
 - **Ergebnis:** Offene, gerankte Websuche umgesetzt; Live-Messung gegen Tavily steht aus.
 - **Nächste Schritte:** Benchmark in `EVALUATION.md` §6.4 (erweitertes Testset) mit echtem Tavily-Zugriff messen; Prompt-/Ranking-Feinschliff auf Basis der Live-Treffer.
+
+---
+
+## S26 — 29.10.2026 · D9 umsetzen (fragebezogener Reparaturassistent) + E2E-Tests
+
+- **Ziel:** Die KI von einer Ein-Schuss-Zusammenfassung zu einem belegten Reparaturdialog ausbauen (ADR D9, Stufen 1–3) und eine Testpyramide einführen, die auch den fertigen Zustand prüft.
+- **Durchgeführt:**
+  - **Stufe 1 (Bundle):** `functions/bundle.js` — iFixit-Guide-Details inkl. Schritten, Werkzeugen und Bildern (deutsche Fassung, Fallback Ausgangssprache); Internet-Archive-Volltext nur bei freier Lizenz (sonst nur Metadaten); Tavily `advanced` + `include_raw_content`; Chunking mit Grenzen (70 Chunks / 90.000 Zeichen), 24-h-Cache über die Cache API (Version 2).
+  - **Stufe 2 (Antwort):** `functions/rag.js` — Chunk-Selektion per Keyword-Überdeckung, Quellengewicht und Nachbarschritten; JSON-Prompt mit Zitatpflicht und Sicherheitsregeln; Validierung mit Markdown-Fallback; Zitate `[cN]` → `[1]…[n]`; Bilder ausschließlich serverseitig über Schritt-Referenzen; deterministische Geräte-Gegenprobe. `functions/ai.js` — Endpunkt, Rate-Limit, 60-s-Timeout, Debug-Modi. `functions/redact.js` — S/N, MAC und IMEI vor dem Modellaufruf entfernen.
+  - **Stufe 3 (UI):** `AiPanel.jsx` — Einstiegsvorschläge, Antwort mit Schrittkarten und Lizenz-Attribution, Abschluss-Gate, vier Grund-Chips, Rückfragen, 10-Turn-Budget mit „Neue Sitzung mit Zusammenfassung“, Verlauf nur im Browser.
+  - **Tests:** `tests/unit.test.mjs` (Chunking, Tokenisierung, Redaktion, Validierung, Gegenprobe), `tests/worker.test.mjs` (`/api/ai` mit gestubbten Upstreams), `e2e/*.spec.js` (Playwright, 45 Tests), `tests/live.e2e.mjs` (Worker + echte Quellen).
+- **Entscheidungen:** D9-Status auf „Stufen 1–3 umgesetzt“ gesetzt. Keine neue ADR nötig — die Teststrategie folgt `REGELN.md` §8 (Testen vor Dokumentieren).
+- **Validierung:** `npm test` grün (2 Node-Tests + 45 E2E), `npm run test:live` grün (`sources: 3, chunks: 19, images: 11` für „Dell Latitude 5420“), `npm run build` erfolgreich.
+- **Fehler/Erkenntnis:**
+  1. *Symptom:* Bundle enthielt 0 Chunks, obwohl Schritte vorhanden waren. *Ursache:* iFixit liefert Zeilentexte als `text_raw`/`text_rendered`, nicht als `text`; zusätzlich lag eine alte Bundle-Version im Cache. *Lösung:* beide Felder lesen, Mindestlänge für Schritt-Chunks senken, `BUNDLE_VERSION` erhöhen. *Erkenntnis:* Externe APIs ändern Feldnamen stillschweigend — Normalisierung braucht Fallbacks **und** einen Versionsschlüssel im Cache.
+  2. *Symptom:* Erster lokaler Lauf zeigte plausible Zahlen, aber keine Chunks. *Ursache:* gecachtes Bundle einer älteren Codeversion. *Erkenntnis:* Ein Cache ohne Schema-Version ist bei sich ändernder Struktur ein Fehlerquelle-Generator.
+  3. *Symptom:* E2E-Test „OCR-Auslöser“ schlug fehl. *Ursache:* Klick auf den Auslöser, bevor `video.videoWidth > 0` war. *Erkenntnis:* Kamera-Flows brauchen in Tests ein Bereitschaftskriterium, nicht nur Sichtbarkeit des Buttons.
+  4. *Symptom:* `getByRole('button', { name: 'Fragen' })` traf zwei Elemente. *Ursache:* Der geschlossene Community-Bereich bleibt im DOM („Reparaturfragen“). *Erkenntnis:* In Disclosure-UI sind Rollen-Selektoren ohne Scope unzuverlässig — Klassen-Selektoren der Aktion sind stabiler.
+- **Ergebnis:** Assistent beantwortet konkrete Fragen mit belegten Schritten und Bildern, begrenzt durch Rate-Limit und Turn-Budget; Testpyramide deckt alle anklickbaren Elemente ab.
+- **Nächste Schritte:** Streaming der Antwort (Stufe 3b), Evaluation nach `EVALUATION.md` (Groundedness, Bildtreffer, Latenz, Neurons), Stufe 4 (Tool-Calling/Vision-Bildprüfung), dauerhaftes Rate-Limit über KV/Durable Objects.
 
 ---
 

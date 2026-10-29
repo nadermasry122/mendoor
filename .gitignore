@@ -19,3 +19,9 @@ secrets.json
 
 # Wissenschaftliche Vertiefung — lokaler Arbeitsordner, nicht versionieren
 Wissenschaftliche-Vertiefung/
+
+# Tests
+test-results/
+playwright-report/
+blob-report/
+.playwright/

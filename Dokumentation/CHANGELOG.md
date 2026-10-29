@@ -3,7 +3,7 @@
 > **Zweck:** Überblick über **kleine** Änderungen - ohne Redundanz, eine Zeile pro Eintrag.
 > **Nicht hier:** Große Änderungen und Entscheidungen → `ENTSCHEIDUNGEN.md`. Sitzungsverlauf → `PROTOKOLLE.md`.
 > **Format:** `Datum · Bereich · Änderung · (Commit)`
-> **Stand:** 20.10.2026
+> **Stand:** 29.10.2026
 
 ---
 
@@ -102,6 +102,13 @@ Neue kleine Änderungen werden hier oben eingetragen (neueste zuerst). Große Ä
 
 | Datum | Bereich | Änderung |
 |---|---|---|
+| 2026-10-29 | Tests | E2E-Suite mit Playwright (45 Tests, jedes anklickbare Element inkl. Fake-Kamera/OCR-Sheet), `node:test` für Unit + Worker-Endpunkt, Live-Smoke für Bundle gegen echte Quellen; `npm test` |
+| 2026-10-29 | KI | D9 Stufe 3: `AiPanel` als Dialog (Vorschläge, Schritte mit Bildern, Abschluss-Gate, Grund-Chips, 10-Turn-Budget, Verlauf in `localStorage`) |
+| 2026-10-29 | KI | D9 Stufe 2: `/api/ai` als Frage-Endpunkt, JSON-Validierung, Zitat-Umnummerierung, serverseitige Bildauflösung, Geräte-Gegenprobe, Rate-Limit, Redaktion von S/N/MAC/IMEI |
+| 2026-10-29 | KI | D9 Stufe 1: Kontext-Bundle (`functions/bundle.js`) — iFixit-Schritte/Werkzeuge/Bilder, Archiv-Volltext nur bei freier Lizenz, Tavily `advanced`+`raw_content`, Cache API Version 2 |
+| 2026-10-29 | Scan | OCR-Rohtext und Vorschläge werden an den Gerätekontext übergeben (`openDevice(name, meta)`), nicht persistiert |
+| 2026-10-29 | Doku | ADR D9 beschlossen: fragebezogener Reparaturassistent (Kontext-Bundle, Frage-Retrieval, belegte Bildschritte); Statusübersicht, D6-Stufen und Roadmap angeglichen |
+| 2026-10-29 | Doku | Stand-Daten auf letzten Inhaltsstand (26.10.) korrigiert; ADR-Zähler 30→31; veraltete Aussage zur lokalen KI-Speicherung aus `DOKUMENTATION.md` §11.2 entfernt |
 | 2026-10-26 | Websuche | ADR D8 umgesetzt: offene Tavily-Suche mit Intent-/Trust-Ranking, Marken-Inferenz, Denylist, Cache, Zweitsuche, Quellenhierarchie im Prompt, Quellentyp-Badges |
 | 2026-10-26 | Doku | Nicht umgesetzte Features aus der Doku entfernt (lokale KI-Speicherung, Geräteherkunft/Kategorie, dynamische Quellenlage) und Ist-Stand angeglichen |
 | 2026-10-21 | Ergebnis-Screen | Disclosure-Panel wächst mit Inhalt; OCR-Kandidatenranking; iFixit-Relevanzfilter; Prompt-Regel gegen gerätefremde Quellen (Commit `092b63f`) |

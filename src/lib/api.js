@@ -94,12 +94,12 @@ export async function searchWeb(device) {
   return Array.isArray(data.items) ? data.items : [];
 }
 
-/* ── KI-Assistenz: RAG + Workers AI (ADR D6/D7) ── */
-export async function requestAiGuide(device, { signal } = {}) {
+/* ── Reparaturassistent: Bundle + Frage → strukturierte Antwort (ADR D9) ── */
+export async function askAi({ device, question = '', rawText = '', history = [], signal } = {}) {
   const resp = await fetch(AI_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device }),
+    body: JSON.stringify({ device, question, rawText, history }),
     signal,
   });
 

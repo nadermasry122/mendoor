@@ -2,7 +2,7 @@
 
 > **Zweck:** Erfassung der Messdaten für Kapitel 8 der Bachelorarbeit (Evaluation). Daten werden **während** der Nutzung/Entwicklung mitgeschrieben — was nicht erfasst wird, ist später nicht rekonstruierbar.
 > **Regeln:** Siehe `REGELN.md` §8.6. Kapitelzuordnung: `BACHELORARBEIT.md` Kap. 8.
-> **Stand:** 20.10.2026
+> **Stand:** 26.10.2026
 
 ---
 
@@ -99,7 +99,7 @@ Qualitative Beobachtungen aus realer Nutzung (z. B. Subreddit-Mismatch, fehlende
 
 ## 6. KI-Assistenz (RAG + Workers AI)
 
-**Status:** `[OFFEN]` — implementiert (Stufe 1+2, ADR D6/D7), aber noch nicht gemessen.
+**Status:** `[OFFEN]` — implementiert (Stufen 1–3, ADR D6/D7/D9), aber noch nicht gemessen.
 
 ### 6.1 Messgrößen
 
@@ -156,3 +156,31 @@ Qualitative Beobachtungen aus realer Nutzung (z. B. Subreddit-Mismatch, fehlende
 | W002 | | iPhone 14 Pro | | | | | | | | |
 | W003 | | Bosch Serie 6 (Waschmaschine) | | | | | | | | |
 | W004 | | Sony WH-1000XM4 | | | | | | | | |
+
+### 6.5 Fragebezogener Dialog (D9) — geplante Messung
+
+**Status:** Stufen 1–3 umgesetzt (2026-10-29); Messung ausstehend. Die automatisierten Tests (`npm test`) prüfen **Funktion**, nicht Qualität — sie ersetzen diese Erhebung nicht.
+
+**Testset:** je Kategorie 3 Fragen mit unterschiedlicher Bestimmtheit:
+- **Spezifisch:** „Die Kontakte sind oxidiert, wie reinige ich sie?" (erwartet: Schritte + Reinigungsmittel + Sicherheit)
+- **Unterbestimmt:** „Es geht nicht mehr an." (erwartet: genau eine Rückfrage, `status: needs_more_info`)
+- **Nicht gedeckt:** „Wie tausche ich das Mainboard bei Gerät X?" ohne Quelle (erwartet: `not_covered`, keine Halluzination)
+
+| Kennzahl | Definition | Anmerkung |
+|---|---|---|
+| **Groundedness** | Anteil der Aussagen, die durch einen gelieferten Chunk gedeckt sind | manuelle Prüfung gegen die Chunks |
+| **Zitatstreue** | Anteil korrekter `[n]`-Zuordnungen | Stichprobe je Antwort |
+| **Bildtreffer** | Anteil der Bilder, die den genannten Schritt zeigen | iFixit-Schrittbezug prüfbar |
+| **Schrittvollständigkeit** | 5-Punkt-Skala: Zerlegen → Prüfen → Reinigen/Tauschen → Zusammenbau | nur bei `answered` |
+| **Rückfrage-Präzision** | Anteil sinnvoller Rückfragen bei unterbestimmten Fragen | Ziel: keine Rückfrage bei eindeutigen Fragen |
+| **Abbruchquote** | Anteil „Nein, es klemmt noch" nach der ersten Antwort | und Anteil gelöster Fälle nach ≤ 3 Turns |
+| **Kontextkosten** | Chunks/Zeichen im Prompt, Tokens out, Neurons/Anfrage | `usage`-Feld der Antwort |
+| **Latenz** | erster Turn (Bundle-Bau) vs. Folge-Turn (Cache) | p50/p95 |
+
+**Zusätzlich zu prüfen:** Geräte-Gegenprobe (Trefferquote richtiger Hinweise, Fehlalarme), Prompt-Injection über einen Web-Chunk, Verhalten ohne Quellen.
+
+| ID | Datum | Gerät | Frage-Typ | Status | Groundedness (1–5) | Zitat korrekt | Bild korrekt | Schritte (1–5) | Turns bis Lösung | Latenz (s) | Neurons | Anmerkung |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| D001 | | | spezifisch | | | | | | | | | |
+| D002 | | | unterbestimmt | | | | | | | | | |
+| D003 | | | nicht gedeckt | | | | | | | | | |

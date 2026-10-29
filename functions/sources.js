@@ -354,6 +354,9 @@ export function rankWebResult(query, result, brand) {
     title,
     url,
     snippet: truncate(stripHtml(result && result.content || ''), 420),
+    /* Rohinhalt nur für das Kontext-Bundle (ADR D9); die klassische
+       Websuche liefert weiterhin ausschließlich Snippets. */
+    raw: String((result && (result.raw_content || result.content)) || ''),
     kind,
     score,
   };
@@ -376,8 +379,9 @@ const WEB_CACHE_NAME = 'mendoor-web-v1';
 const WEB_CACHE_TTL = 3600;
 const MIN_USABLE_WEB = 2;
 
-async function runTavilySearch(query, env) {
-  const cacheKey = `https://mendoor.cache/web/${encodeURIComponent(query)}`;
+async function runTavilySearch(query, env, { depth = 'basic', rawContent = false, maxResults = 10 } = {}) {
+  const cacheKey =
+    `https://mendoor.cache/web/${depth}${rawContent ? '-raw' : ''}/${encodeURIComponent(query)}`;
   try {
     const cache = await caches.open(WEB_CACHE_NAME);
     const hit = await cache.match(cacheKey);
@@ -402,7 +406,12 @@ async function runTavilySearch(query, env) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query, search_depth: 'basic', max_results: 10 }),
+      body: JSON.stringify({
+        query,
+        search_depth: depth,
+        max_results: maxResults,
+        ...(rawContent ? { include_raw_content: true } : {}),
+      }),
     });
   } catch (err) {
     throw new SourceError('Tavily unreachable', 502, err.message);
@@ -453,4 +462,184 @@ export async function searchWebItems(device, env) {
   }
 
   return results.slice(0, 8).map(({ title, url, snippet, kind }) => ({ title, url, snippet, kind }));
+}
+
+/*
+ * Websuche mit Rohinhalt für das Kontext-Bundle (ADR D9).
+ * Bewusst getrennt von `searchWebItems`: Die klassische Websuche bleibt
+ * bei Snippets und `basic` (Kosten), nur das Bundle lädt Volltext.
+ */
+export async function searchWebItemsWithContent(device, env) {
+  const base = bestSearchTerm(device);
+  const brand = inferBrand(device) || inferBrand(base);
+  const opts = { depth: 'advanced', rawContent: true, maxResults: 8 };
+
+  const first = await runTavilySearch(buildWebQuery(base, brand), env, opts);
+  let results = rankWebResults(base, brand, first && first.results);
+
+  if (results.length < MIN_USABLE_WEB) {
+    const second = await runTavilySearch(buildSecondWebQuery(base, brand), env, opts);
+    const more = rankWebResults(base, brand, second && second.results);
+    const seen = new Set(results.map((r) => r.url));
+    for (const item of more) {
+      if (seen.has(item.url)) continue;
+      seen.add(item.url);
+      results.push(item);
+    }
+    results = results.sort((a, b) => b.score - a.score);
+  }
+
+  return results.slice(0, 5);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   iFixit-Guide-Detail (ADR D9): Schritte + Bilder.
+   Die Such-API liefert nur Metadaten; erst `/guides/{id}` enthält
+   die Arbeitsschritte und die Bildobjekte je Schritt.
+   Lizenz: CC BY-NC-SA — Attribution ist Pflicht.
+   ══════════════════════════════════════════════════════════════ */
+const IFIXIT_API_BASE = 'https://www.ifixit.com/api/2.0';
+const IFIXIT_LICENSE = 'CC BY-NC-SA 3.0';
+
+export { IFIXIT_LICENSE };
+
+function difficultyName(value) {
+  if (!value) return '';
+  const raw = typeof value === 'object' ? value.name || value.title || '' : String(value);
+  return String(raw).trim();
+}
+
+function ifixitImageUrl(media) {
+  const first = media && Array.isArray(media.data) ? media.data[0] : null;
+  if (!first) return '';
+  return first.standard || first.medium || first.large || first.original || first.thumbnail || '';
+}
+
+/* Guide-Detail defensiv normalisieren: iFixit liefert `lines` als
+   Objekte (`{text, bullet}`) oder als Strings, `media` je Schritt. */
+export function normalizeIfixitGuide(guide) {
+  const guideid = String(guide?.guideid || guide?.guideId || guide?.id || '');
+  const url = guide?.url || (guideid ? `https://www.ifixit.com/Guide/${guideid}` : '');
+
+  const steps = (Array.isArray(guide?.steps) ? guide.steps : [])
+    .map((step, index) => {
+      const lines = (Array.isArray(step?.lines) ? step.lines : [])
+        .map((line) =>
+          typeof line === 'string'
+            ? line
+            : (line && (line.text_rendered || line.text_raw || line.text)) || ''
+        )
+        .map((text) => stripHtml(text))
+        .filter(Boolean);
+      const image = ifixitImageUrl(step?.media);
+      const title = stripHtml(step?.title || '');
+      return {
+        index,
+        title,
+        text: lines.join('\n'),
+        image: image ? { url: image, alt: title || `Schritt ${index + 1}` } : null,
+      };
+    })
+    .filter((step) => step.title || step.text);
+
+  return {
+    guideid,
+    title: stripHtml(guide?.title || ''),
+    url,
+    summary: stripHtml(guide?.summary || ''),
+    introduction: stripHtml(guide?.introduction_raw || guide?.introduction_rendered || ''),
+    conclusion: stripHtml(guide?.conclusion_raw || guide?.conclusion_rendered || ''),
+    tools: (Array.isArray(guide?.tools) ? guide.tools : [])
+      .map((tool) => stripHtml(tool?.text || tool?.name || ''))
+      .filter(Boolean),
+    difficulty: difficultyName(guide?.difficulty),
+    time: guide?.time_required_max || guide?.time_required_min || null,
+    steps,
+  };
+}
+
+export async function fetchIfixitGuideDetail(guideid) {
+  const id = String(guideid || '').trim();
+  if (!id) return null;
+  let lastError = null;
+
+  /* Erst deutsche Fassung, dann Ausgangssprache (dieselbe Kaskade
+     wie im Client, src/lib/api.js). */
+  for (const suffix of ['?langid=de', '?useSourceLang=1', '']) {
+    try {
+      const resp = await fetch(`${IFIXIT_API_BASE}/guides/${encodeURIComponent(id)}${suffix}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!resp.ok) {
+        lastError = new SourceError(`iFixit guide ${resp.status}`, resp.status >= 500 ? 502 : resp.status);
+        continue;
+      }
+      const data = await resp.json().catch(() => null);
+      if (data && Array.isArray(data.steps) && data.steps.length > 0) return normalizeIfixitGuide(data);
+    } catch (err) {
+      lastError = new SourceError('iFixit guide unreachable', 502, err.message);
+    }
+  }
+
+  if (lastError) throw lastError;
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Internet-Archive-Volltext (ADR D9).
+   Nur bei freier Lizenz wird der OCR-Volltext geladen; sonst bleibt
+   es beim Metadatensatz (Titel/Beschreibung) und einem Link.
+   ══════════════════════════════════════════════════════════════ */
+const ARCHIVE_FREE_LICENSE = /(publicdomain|public domain|creativecommons|creative commons|cc0|cc-by)/i;
+
+export function archiveLicense(metadata) {
+  const raw = [metadata?.licenseurl, metadata?.rights, metadata?.license]
+    .filter(Boolean)
+    .join(' · ');
+  return { free: ARCHIVE_FREE_LICENSE.test(raw), label: truncate(raw, 160) };
+}
+
+export async function fetchArchiveMetadata(identifier) {
+  const resp = await fetch(`https://archive.org/metadata/${encodeURIComponent(identifier)}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!resp.ok) {
+    throw new SourceError(`Archive metadata ${resp.status}`, resp.status >= 500 ? 502 : resp.status);
+  }
+  return resp.json();
+}
+
+function pickArchiveTextFile(metadata) {
+  const files = Array.isArray(metadata?.files) ? metadata.files : [];
+  const candidates = files.filter((file) => file && file.name && /(_djvu\.txt|\.txt)$/i.test(file.name));
+  const djvu = candidates.find((file) => /_djvu\.txt$/i.test(file.name));
+  return (djvu || candidates[0])?.name || '';
+}
+
+export async function fetchArchiveText(identifier, { maxBytes = 120000 } = {}) {
+  const metadata = await fetchArchiveMetadata(identifier);
+  const license = archiveLicense(metadata);
+  const file = pickArchiveTextFile(metadata);
+
+  if (!license.free || !file) {
+    return { text: '', license, file, blocked: !license.free };
+  }
+
+  const url =
+    `https://archive.org/download/${encodeURIComponent(identifier)}/` +
+    `${encodeURIComponent(file)}`;
+
+  let resp;
+  try {
+    resp = await fetch(url, { headers: { Range: `bytes=0-${maxBytes}` } });
+  } catch (err) {
+    throw new SourceError('Archive text unreachable', 502, err.message);
+  }
+
+  if (!resp.ok) {
+    throw new SourceError(`Archive text ${resp.status}`, resp.status >= 500 ? 502 : resp.status);
+  }
+
+  const text = await resp.text();
+  return { text: text.slice(0, maxBytes), license, file, blocked: false };
 }

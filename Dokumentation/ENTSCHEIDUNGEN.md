@@ -3,7 +3,7 @@
 > **Zweck:** Thematisch gegliederte Sammlung aller großen Entscheidungen mit Begründung, verworfenen Alternativen und Zuordnung zum Kapitel der Bachelorarbeit.
 > **Regeln:** Siehe `REGELN.md`, Abschnitt 3 (ADR-Schema). Ist-Stand des Systems: `DOKUMENTATION.md`. Chronologie: `PROTOKOLLE.md`.
 > **Quellen:** `[Qn]` verweisen auf das zentrale Quellenregister `QUELLEN.md` (stabile Schlüssel).
-> **Stand:** 20.10.2026 · **Anzahl Einträge:** 30
+> **Stand:** 29.10.2026 · **Anzahl Einträge:** 32
 
 ### Statusübersicht
 
@@ -34,9 +34,10 @@
 | D3 | Internet-Archive-Anbindung | aktiv | 6.3 |
 | D4 | Tavily statt Google CSE / SearXNG | aktiv | 6.4 |
 | D5 | Suchbegriffsbildung (`bestSearchTerm`) | aktiv | 6.5 |
-| D6 | KI-Assistenz: RAG-first, dann Cloudflare Workers AI | aktiv (Stufe 1+2 umgesetzt; Tool-Calling offen) | 7.5, 9.3 |
+| D6 | KI-Assistenz: RAG-first, dann Cloudflare Workers AI | aktiv (Stufe 1+2 umgesetzt; Frage-Dialog + Volltext via D9; Tool-Calling offen) | 7.5, 9.3 |
 | D7 | RAG-Orchestrierung und KI-Eintrag (Umsetzung D6) | aktiv (umgesetzt; Evaluation offen) | 7.5 |
 | D8 | Offene Websuche mit Trust-Ranking statt Domain-Allowlist | aktiv (umgesetzt; Evaluation offen) | 7.4, 8 |
+| D9 | Fragebezogener Reparaturassistent (Kontext-Bundle, Frage-Retrieval, belegte Bildschritte) | aktiv (Stufen 1–3 umgesetzt; Stufe 4 offen) | 7.6, 8 |
 | E1 | Iteratives, sitzungsbasiertes Vorgehen | aktiv | 3.x (neu) |
 | E2 | Quellenhierarchie für Designfragen | aktiv | 4.x (neu) |
 | E3 | Fehlerdokumentation nach festem Schema | aktiv | 7 |
@@ -441,6 +442,60 @@
   - **Recht:** Handbücher sind urheberrechtlich geschützt; zulässig ist die Verlinkung und die zusammenfassende Auswertung, nicht die Vervielfältigung.
   - **Evaluation:** Recall/Precision, Nulltrefferquote, Latenz und Tavily-Verbrauch müssen mit einem Benchmark-Set gemessen werden (siehe `EVALUATION.md` §6.4).
 - **Quellen:** [Q10], [Q20].
+
+---
+
+### D9 — Fragebezogener Reparaturassistent (Kontext-Bundle, Frage-Retrieval, belegte Bildschritte)
+- **Status:** aktiv (Stufen 1–3 umgesetzt; Stufe 4 offen)
+- **Datum:** 2026-10-29
+- **Thesis-Kapitel:** 7.6 (neu), 8 (Evaluation)
+- **Kontext:** Die KI-Assistenz (D6/D7) ist ein **Ein-Schuss-Verfahren**: Sie sieht das Gerät, nicht die Frage. Außerdem sieht sie nur Metadaten — je Quelle Titel, URL und einen auf 420 Zeichen gekürzten Auszug (`sources.js` `truncate(..., 420)`), maximal 12 Quellen (`MAX_SOURCES`). Der Prompt verlangt vier feste Überschriften und **unter 250 Wörtern** (`rag.js` `SYSTEM_PROMPT`, `max_tokens: 800`). Anleitungsschritte, Bilder und Handbuchseiten gelangen nie in den Kontext. Nutzeranforderung: eine **spezifische Frage** („Teile im Gerät sind oxidiert, wie bekomme ich es wieder zum Laufen?“) soll eine **konkrete, schrittweise Antwort** vom Zerlegen bis zur Reinigung erhalten, möglichst mit passenden Bildern — die bereitgestellten Daten sollen gebündelt nutzbar sein.
+- **Optionen:** (1) Prompt-Tuning am Ein-Schuss-Verfahren, (2) Fine-Tuning/eigenes Modell auf den Quellen, (3) RAG mit **Volltext-Kontext-Bundle**, Mehrfachdialog und belegtem Bildindex, (4) agentisches Tool-Calling (Modell ruft Suche/Seitenabruf selbst auf, D6 Stufe 3), (5) Vektor-Datenbank (Workers AI Embeddings + Vectorize) als Retrieval-Basis.
+- **Entscheidung:** **Option 3**, in vier Stufen. Im Einzelnen:
+  1. **Kontext-Bundle pro Gerät (einmalig, gecacht).** Statt Snippets werden Inhalte geladen: iFixit-Guide-Details inkl. **Schritten und Bildobjekten** (`/api/2.0/guides/{id}`), Internet-Archive-**Volltext** (nur bei freier Lizenz, sonst nur Link), Tavily mit `search_depth: advanced` und `include_raw_content`. Chunks werden normalisiert, dedupliziert und mit Quellen-ID/Position indexiert. Ablage in **KV** (`bundle:{hash(device)}`, TTL ca. 24 h) — eine Suche pro Gerät, nicht pro Frage.
+  2. **Fragebezogenes Retrieval.** Query = Gerät **+ Frage-Intent** (deutsch/englisch, nicht mehr nur `bestSearchTerm`). Auswahl der 5–8 relevantesten Chunks per Keyword-/BM25-Scoring. Eine **neue externe Suche** erfolgt nur, wenn die Frage einen neuen Intent einführt; sonst wird aus dem Bundle geantwortet (Kostenbremse).
+  3. **Generierung mit belegter Struktur.** Antwort als validiertes JSON `{ answer, steps: [{ title, text, sourceIds, stepRef }], sources, status }`; bei ungültigem JSON Markdown-Fallback. `max_tokens` 2.000–2.500. Zitatpflicht und Lückenbekenntnis bleiben (D6/D7). **Das Modell gibt niemals Bild-URLs aus**, sondern Referenzen (`sourceId` + `stepIndex`), die der Server gegen den Bildindex auflöst.
+  4. **Dialogsteuerung statt Turn-Limit.** Nach jeder Antwort ein Abschluss-Gate („Hat dir das geholfen?“). Bei „nein“ wählt der Nutzer einen Grund („Schritt hat nicht funktioniert“, „Teil nicht gefunden“, „Ich traue mich nicht“, „Symptom ist anders“), der die nächste Retrieval-Strategie bestimmt. Das Modell darf **eine** gezielte Rückfrage stellen. Nach zwei erfolglosen Versuchen **Eskalation** (ehrliche Lücke, bester Guide zum Weiterlesen, Community-Link-out, Fachperson) statt Schleife. Hartes Budget: 10 Nutzer-Turns pro Sitzung; danach „neue Sitzung mit Zusammenfassung“ (komprimierter Verlauf wird mitgenommen). Verlauf ausschließlich im Browser (`localStorage`), keine serverseitige Gesprächsspeicherung.
+  5. **Bilder gestaffelt und lizenzgeprüft.** Priorität: (1) iFixit-Schrittbilder (strukturiert, Schrittbezug, CC BY-NC-SA), (2) Wikimedia Commons/Openverse (Lizenzmetadaten im Treffer), (3) Internet Archive nur bei freier Lizenz, (4) Hersteller-PDF **nur verlinkt** (`#page=N`), nie eingebettet. Kein Hotlinking beliebiger Seiten. **Attribution und Lizenz-Badge sind Pflicht**, nicht optional. Eine Bildprüfung per Vision-Modell ist als optionale, abschaltbare Stufe vorgesehen.
+  6. **Geräteabgleich als Hinweis, nicht als Eingriff.** Der Server prüft deterministisch, ob die Geräte-Tokens der Treffer zum bestätigten Gerät passen. Bei Abweichung erscheint **einmal pro Sitzung** ein Hinweis mit Beleg („Die Treffer betreffen T14 Gen 3; dein Typenschild nennt 20XW…“) und einem Tap zum Wechseln. Kein stillschweigender Gerätewechsel; Ablehnung wird für die Sitzung respektiert.
+  7. **Betriebsschutz.** Rate-Limit pro IP, `KV`-Binding, AI-Timeout 60 s (heute 30 s), Kostenobergrenze pro Sitzung, Streaming erst in Stufe 3.
+  8. **OCR-Kontext.** Der bereinigte OCR-Text des Typenschilds wird mitgegeben (Hilfe bei Netzteilspannung, Revisionen, Varianten), **nicht** die Wort-Konfidenzen. Vor dem Senden werden Seriennummern/MAC/IMEI-Muster redigiert (Datenminimierung). Dafür muss der Rohtext durchgereicht werden — heute wird er nach dem Sheet verworfen (`openDevice(name)` speichert nur den Namen).
+- **Begründung:**
+  - **Der Engpass sind die Daten, nicht der Prompt.** Bei 420 Zeichen Auszug und 12 Quellen kann das Modell keinen Schraubenschritt belegen. Prompt-Tuning (Option 1) formuliert dasselbe Wissen schöner, erzeugt aber kein neues — es würde halluzinieren oder die Lücke benennen.
+  - **Fine-Tuning (Option 2) scheidet aus:** Die Quellen sind fremd und lizenzbehaftet, ändern sich laufend, und das gewählte Modell ist auf Workers AI nicht trainierbar. RAG hält Quellen und Modell getrennt und ist belegbar.
+  - **Bundle statt Suche-pro-Frage:** Tavilys Freikontingent (1.000 Suchen/Monat, D4) macht eine Suche pro Chat-Turn unwirtschaftlich; die Bündelung ist zugleich schneller und stabiler.
+  - **Kein Vektor-Store in Stufe 1 (Option 5):** Der Korpus pro Gerät ist klein (wenige Guides, ein Handbuch). Keyword-/BM25-Scoring reicht und spart eine neue Infrastruktur (Embeddings, Vectorize, Neuindexierung). Embeddings bleiben der spätere Ausbau, wenn der Korpus wächst.
+  - **Struktur statt Freitext:** Nur so lassen sich Schritte als Karten mit Bildern rendern und serverseitig gegen die Quellen prüfen. Die Auflösung der Bild-URLs auf dem Server macht erfundene Bilder strukturell unmöglich.
+  - **Offener Dialog statt hartem Limit:** Eine spezifische Reparaturfrage ist selten nach drei Turns beantwortet. Rückfragen sind billiger (0 Suchcredits) und treffsicherer als weitere Rateversuche; das Abschluss-Gate beendet den Chat, wenn er gelöst ist, und eskaliert, wenn nicht.
+  - **Geräteabgleich:** Der Name auf dem Typenschild ist oft unterspezifiziert (Generation/Revision), und die Bestätigung ist der einzige Korrekturmoment der App. Der Abgleich nutzt Evidenz, die beim Retrieval ohnehin anfällt, und kostet keine zusätzliche Anfrage.
+  - **Bildstaffelung:** iFixit liefert als einzige Quelle strukturierte Schritt-Bild-Paare mit klarer Lizenz; alles andere ist entweder lizenzrechtlich unklar (Hersteller-PDF) oder ohne Schrittbezug (Archiv-Scan).
+- **Verworfene Alternativen:**
+
+| Alternative | Warum verworfen |
+| --- | --- |
+| **Prompt-Tuning am Ein-Schuss-Verfahren** | Ändert die Wissensbasis nicht; bei fehlenden Schritten entstehen entweder Lücken oder Halluzinationen. |
+| **Fine-Tuning / eigenes Modell** | Quellen fremd und lizenzbehaftet, laufend veränderlich; auf Workers AI nicht trainierbar; Belegbarkeit ginge verloren. |
+| **Agentisches Tool-Calling (Option 4)** | Mächtig, aber unkalkulierbar: variable Latenz, mehrere Suchcredits pro Turn, schwer zu testender Pfad. Bleibt als spätere Stufe nach der Evaluation. |
+| **Vektor-DB/Vectorize sofort** | Neue Infrastruktur ohne Nutzen bei kleinem Korpus; Keyword-Scoring ist ausreichend und transparenter. |
+| **Suche pro Chat-Turn** | Verbrennt Tavily-Kontingent und erhöht Latenz; Bundle + bedarfsgesteuerte Nachsuche ist gleichwertig bei Bruchteil der Kosten. |
+| **Hartes Turn-Limit (3–4)** | Bricht Nutzer ohne Lösung ab; Rückfragen und Eskalation lösen das Problem besser als eine Obergrenze. |
+| **Bilder von beliebigen Webseiten hotlinken** | Unklare Lizenz, tote Links, Hotlink-Schutz, Tracking. Schrittbezug nicht prüfbar. |
+| **Bilder vom Modell generieren lassen** | Erzeugt falsche Bauteile und nicht existierende Schrauben — bei Reparaturanleitungen gefährlich. |
+| **Serverseitige Gesprächsspeicherung** | Zusätzliche Datenschutz-/Löschpflichten ohne Nutzen; der Verlauf gehört in den Browser. |
+
+- **Konsequenzen / Grenzen:**
+  - **Umsetzungsstand:** Stufen 1–3 umgesetzt (2026-10-29). Stufe 1: `functions/bundle.js` (iFixit-Detail mit Schritten/Werkzeugen/Bildern, Archiv-Volltext nur bei freier Lizenz, Tavily `advanced`+`raw_content`, Chunking, Cache API mit Version 2, TTL 24 h). Stufe 2: `functions/rag.js` (Chunk-Selektion, JSON-Prompt, Validierung, Zitat-Umnummerierung, serverseitige Bildauflösung, Geräte-Gegenprobe), `functions/ai.js` (`/api/ai` mit Rate-Limit, 60-s-Timeout, Debug-Modi), `functions/redact.js` (Datenminimierung). Stufe 3: `AiPanel.jsx` (Chat, Abschluss-Gate, Grund-Chips, 10-Turn-Budget, Verlauf in `localStorage`), OCR-Rohtext über `openDevice(name, meta)`. **Offen:** Streaming, Stufe 4 (Tool-Calling, Vision-Bildprüfung), dauerhaftes Rate-Limit (KV/Durable Objects).
+  - **Tests:** Unit- und Worker-Integrationstests (`node:test`, ohne Schlüssel), 45 Playwright-E2E-Tests (jedes anklickbare Element inkl. Fake-Kamera und OCR-Sheet), Live-Smoke gegen iFixit/Archiv (`npm run test:live`). `npm test` läuft vollständig ohne API-Schlüssel.
+  - **Kosten:** Deutlich höhere Token- und Neurons-Kosten pro Antwort (2.000–2.500 statt 800 Tokens, Volltext-Kontext). Der Endpoint ist durch ein Rate-Limit (20/10 min) und den 24-h-Bundle-Cache begrenzt; beides ist bewusst defensiv.
+  - **Latenz:** Das erste Bundle pro Gerät ist langsam (mehrere externe Abrufe, gemessen ca. 2 s lokal), Folgeantworten sind schnell. Timeout 60 s; Streaming bleibt offen.
+  - **Recht:** iFixit-Inhalte und -Bilder stehen unter **CC BY-NC-SA** (nicht kommerziell) — für eine nicht-kommerzielle Bachelorarbeit vertretbar, aber **Attribution und Share-Alike sind Pflicht**. Hersteller-PDFs werden nur verlinkt, nicht reproduziert (vgl. D8). Archiv-Items nur bei freier Lizenz einbetten. Diese Einschränkung ist in der Thesis auszuweisen.
+  - **Datenminimierung:** OCR-Rohtext wird nur bereinigt und redigiert übergeben; keine Speicherung des Gesprächs auf dem Server.
+  - **Prompt-Injection:** Volltexte aus dem offenen Web vergrößern die Angriffsfläche gegenüber Snippets. Quellentext bleibt Daten; zusätzlich werden Chunks begrenzt und Quellen-IDs serverseitig vergeben.
+  - **Quellenlage:** Für Symptome wie Korrosion existieren häufig **keine** gerätespezifischen Anleitungen. Die ehrliche Lücke bleibt Teil der Antwort — das ist kein Fehler des Assistenten, sondern eine Eigenschaft der Datenlage.
+  - **Evaluation:** Neue Messgrößen nötig: Groundedness, Zitat- und Bildtreffer, Schrittvollständigkeit, Latenz, Neurons/Anfrage, Abbruchquote im Dialog (siehe `EVALUATION.md`).
+  - **D6:** Die dortige „Stufe 3 (Tool-Calling)“ wird zur **Stufe 4**; die Stufen 1+2 bleiben gültig.
+  - **Dokumentation:** Thesis-Kapitel 7.6 ist zu schreiben; `DOKUMENTATION.md` §3.3 und §11.2 sind nach der Umsetzung anzugleichen (Ist-Stand).
+- **Quellen:** offen — für Kapitel 7.6 sind Belege zu ergänzen (u. a. Groundedness/RAG, Workers-AI-Grenzen, iFixit-Lizenz, PDF-Extraktion). Eintrag in `QUELLEN.md` folgt mit der Thesis-Formulierung.
 
 ---
 

@@ -1,22 +1,10 @@
 // mendooR Worker – routes /api/* to serverless functions, everything else to static files.
 // Requires Secrets Store bindings named GOOGLE_VISION_API_KEY and TAVILY_API_KEY (see wrangler.jsonc).
-// KI-Assistenz: Workers-AI-Binding `AI` (ADR D6/D7).
+// KI-Assistenz: fragebezogener Reparaturassistent (ADR D9).
 
 import { searchArchiveItems, searchWebItems } from './sources.js';
-import {
-  AI_MODEL,
-  AI_REQUEST_OPTIONS,
-  buildMessages,
-  extractAnswer,
-  normalizeDevice,
-  retrieveSources
-} from './rag.js';
-
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type'
-};
+import { handleAi } from './ai.js';
+import { CORS, json } from './http.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -62,7 +50,7 @@ export default {
       return handleWebSearch(request, env);
     }
 
-    // ── RAG + Workers AI assistance ──
+    // ── RAG + Workers AI assistance (ADR D9) ──
     if (url.pathname === '/api/ai') {
       return handleAi(request, env);
     }
@@ -225,13 +213,7 @@ async function handleVision(request, env) {
   });
 }
 
-/* Helper — JSON response with CORS headers (optional extra headers) */
-function json(payload, status = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...CORS, ...extraHeaders }
-  });
-}
+/* Helper: JSON-Antwort liegt in http.js (mit CORS-Headern). */
 
 /* ══════════════════════════════════════════════
    /api/archive – searches the Internet Archive's
@@ -303,163 +285,4 @@ async function handleWebSearch(request, env) {
       err.status || 502
     );
   }
-}
-
-/* ══════════════════════════════════════════════
-   /api/ai – RAG + Workers AI (ADR D6/D7)
-
-   Body: { "device": "iPhone 14" }
-   Query: ?debug=1 liefert nur Retrieval + Prompt, ohne AI-Aufruf.
-
-   Ablauf: Quellen serverseitig abrufen (iFixit, Archiv, Tavily),
-   normalisieren/begrenzen, strikt quellengebundenen Prompt bauen und
-   erst dann das Modell aufrufen. Ohne Quellen keine generative Antwort.
-   ══════════════════════════════════════════════ */
-async function handleAi(request, env) {
-  const url = new URL(request.url);
-  const debug = url.searchParams.get('debug') === '1';
-  let device = '';
-
-  if (request.method === 'GET') {
-    device = normalizeDevice(url.searchParams.get('device'));
-    if (!device) {
-      return json(
-        {
-          error: 'Missing "device" query parameter',
-          hint: 'Use POST with JSON { "device": "..." } for an AI answer. Debug: GET /api/ai?device=iPhone%2014&debug=1'
-        },
-        400
-      );
-    }
-    if (!debug) {
-      return json(
-        {
-          error: 'GET is only supported for debug=1',
-          hint: 'Use POST with JSON { "device": "..." } for an AI answer.'
-        },
-        405,
-        { Allow: 'POST' }
-      );
-    }
-  } else if (request.method === 'POST') {
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return json({ error: 'Invalid JSON body' }, 400);
-    }
-    device = normalizeDevice(body && body.device);
-    if (!device) {
-      return json({ error: 'Missing or invalid "device" field' }, 400);
-    }
-  } else {
-    return json(
-      { error: 'Method not allowed. Use POST (or GET with ?debug=1).' },
-      405,
-      { Allow: 'POST, GET' }
-    );
-  }
-
-  // Retrieval darf auch im Debug-Modus ohne AI-Binding laufen.
-  if (!debug && !env.AI) {
-    return json(
-      { error: 'Workers AI binding not configured', code: 'AI_BINDING_MISSING' },
-      503,
-      { 'Cache-Control': 'no-store' }
-    );
-  }
-
-  let retrieval;
-  try {
-    retrieval = await retrieveSources(device, env);
-  } catch (err) {
-    return json(
-      { error: 'Source retrieval failed', detail: err.message },
-      502,
-      { 'Cache-Control': 'no-store' }
-    );
-  }
-
-  const { query, sources, errors } = retrieval;
-
-  if (debug) {
-    return json(
-      {
-        debug: true,
-        model: AI_MODEL,
-        query,
-        sources,
-        errors,
-        messages: sources.length > 0 ? buildMessages(device, sources) : []
-      },
-      200,
-      { 'Cache-Control': 'no-store' }
-    );
-  }
-
-  if (sources.length === 0) {
-    return json(
-      { answer: null, reason: 'no_sources', query, sources: [], errors },
-      200,
-      { 'Cache-Control': 'no-store' }
-    );
-  }
-
-  const messages = buildMessages(device, sources);
-
-  let result;
-  let timeoutTimer;
-  try {
-    const timeout = new Promise((_, reject) => {
-      timeoutTimer = setTimeout(() => reject(new Error('AI timeout after 30s')), 30000);
-    });
-
-    // Primär mit gpt-oss-Reasoning; falls die Laufzeit den optionalen
-    // Parameter ablehnt, einmal ohne ihn wiederholen.
-    const aiCall = (async () => {
-      try {
-        return await env.AI.run(AI_MODEL, { messages, ...AI_REQUEST_OPTIONS });
-      } catch (err) {
-        if (!/reasoning|unsupported|invalid|unexpected/i.test(err.message || '')) throw err;
-        return env.AI.run(AI_MODEL, { messages, max_tokens: 800, temperature: 0.2 });
-      }
-    })();
-
-    result = await Promise.race([aiCall, timeout]);
-  } catch (err) {
-    const timeout = /timeout/i.test(err.message || '');
-    return json(
-      {
-        error: timeout ? 'Workers AI timeout' : 'Workers AI request failed',
-        code: timeout ? 'AI_TIMEOUT' : 'AI_ERROR',
-        detail: err.message
-      },
-      timeout ? 504 : 502,
-      { 'Cache-Control': 'no-store' }
-    );
-  } finally {
-    clearTimeout(timeoutTimer);
-  }
-
-  const answer = extractAnswer(result);
-  if (!answer) {
-    return json(
-      { error: 'Empty AI response', code: 'AI_EMPTY' },
-      502,
-      { 'Cache-Control': 'no-store' }
-    );
-  }
-
-  return json(
-    {
-      answer,
-      model: AI_MODEL,
-      query,
-      sources: sources.map(({ id, type, title, url, meta, kind }) => ({ id, type, title, url, meta, ...(kind ? { kind } : {}) })),
-      retrievedAt: new Date().toISOString(),
-      usage: result && result.usage ? result.usage : null
-    },
-    200,
-    { 'Cache-Control': 'no-store' }
-  );
 }

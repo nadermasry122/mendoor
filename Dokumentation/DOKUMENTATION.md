@@ -2,7 +2,7 @@
 
 > **Projekt:** Entwicklung einer mobilen Anwendung zur Identifikation und Reparaturunterstützung von Elektroaltgeräten
 > **Art:** Bachelorarbeit
-> **Stand:** 20.10.2026
+> **Stand:** 29.10.2026
 > **Dokumentstatus:** Konsolidierte Fassung - zusammengeführt aus den Entwicklungs-Sitzungsprotokollen, den Kapitelentwürfen und dem tatsächlichen Quellcode
 
 ---
@@ -77,7 +77,8 @@ Als Basis (locker gewichtet): Google - *Actions SDK*.
 - **Entwicklung:** React 19 + Vite (JavaScript/JSX) im Frontend, Cloudflare Workers (Backend).
 - **Versionsverwaltung:** Git / GitHub (`nadermasry122/mendoor`).
 - **Deployment:** Cloudflare Workers mit Git-Integration (Auto-Deploy bei Push).
-- **Externe Dienste:** Google Cloud Vision, Internet Archive, Tavily, iFixit, Cloudflare Workers AI (ADR D6/D7).
+- **Externe Dienste:** Google Cloud Vision, Internet Archive, Tavily, iFixit, Cloudflare Workers AI (ADR D6/D7/D9).
+- **Tests:** `node:test` (Unit + Worker-Integration), Playwright/Chromium (Browser-E2E), `wrangler dev --local` (Live-Smoke). Alle externen Dienste werden in den Tests ersetzt; `npm test` läuft ohne Schlüssel.
 
 ---
 
@@ -125,54 +126,76 @@ mendooR folgt dem Standardmuster für sichere Anbindung schlüsselpflichtiger Cl
 | `POST /api/vision` | Proxy zu Google Cloud Vision (OCR), `?debug=1` für Rohantwort | ✅ |
 | `GET /api/archive` | Suche nach gescannten Handbüchern (Internet Archive) | ✅ |
 | `GET /api/websearch` | Offene Fachartikel-/Dokumentations-Suche über Tavily mit Intent-/Trust-Ranking (ADR D8) | ✅ |
-| `POST /api/ai` | KI-Assistenz: serverseitiges RAG + Workers-AI-Synthese (ADR D6/D7); Body `{ "device": "…" }` | ✅ |
-| `GET /api/ai?device=…&debug=1` | Diagnose: RAG-Retrieval + Prompt **ohne** AI-Aufruf (Browser-Test) | ✅ |
+| `POST /api/ai` | Reparaturassistent: Kontext-Bundle + Frage → strukturierte, belegte Antwort mit Schritten und Bildern (ADR D9); Body `{ "device": "…", "question": "…", "rawText"?: "…", "history"?: [] }` | ✅ |
+| `POST /api/ai?debug=1` | Diagnose: Bundle + ausgewählte Chunks + Prompt **ohne** AI-Aufruf | ✅ |
+| `GET /api/ai?device=…&debug=1` | Diagnose: Kontext-Bundle (Zahlen, Quellen, Schritte, Bilder); `?full=1` liefert alle Chunks | ✅ |
 | ~~`/api/reddit`~~ | entfernt — Reddit blockiert Serverzugriffe (siehe 7.2) | ❌ |
 
-### 3.3 KI-/Assistenzschicht: RAG + Workers AI (implementiert, Stufe 1+2)
+### 3.3 KI-Assistenz: fragebezogener Reparaturassistent (ADR D9, Stufen 1–3)
 
-ADR D6/D7 legen fest: **RAG-first, danach Cloudflare Workers AI**. Die Stufen 1 und 2 sind umgesetzt: Quellen werden serverseitig abgerufen und aufbereitet; erst danach synthetisiert Workers AI die Antwort. Tool-Calling (Stufe 3) ist noch nicht implementiert.
+ADR D6/D7 legten **RAG-first** fest; **ADR D9** erweitert das Verfahren von einer Ein-Schuss-Zusammenfassung auf einen Dialog. Das Modell sieht nicht mehr nur den Gerätenamen und 420-Zeichen-Auszüge, sondern die **Frage**, die **Anleitungsschritte** und **Bilder** aus den Quellen.
 
 **Datenfluss:**
 
 ```
-Browser (Gerätekontext)
-   │ POST /api/ai
+Browser (Gerät + Frage + Verlauf + OCR-Text)
+   │ POST /api/ai  { device, question, rawText, history }
    ▼
-Cloudflare Worker (functions/_worker.js)
-   1. Gerätekontext normalisieren + bestSearchTerm
-   2. paralleles Retrieval: iFixit, Internet Archive, Tavily
-   3. Normalisierung/Filterung/Deduplizierung → max. 12 Quellen
-   4. Quellen-Prompt mit [1], [2] … bauen (functions/rag.js)
-   5. env.AI.run("@cf/openai/gpt-oss-20b", …) mit Quellenkontext
-   6. Antwort + Quellenliste zurück an den Client
-   └─ ohne Quellen: keine generative Antwort
-   └─ bei AI-Fehler/Timeout: Quellenlisten bleiben nutzbar
+Cloudflare Worker (functions/ai.js)
+   1. Rate-Limit (Cache API, 20 Anfragen / 10 min / IP)
+   2. Typenschild-Text redigieren (Seriennummer, MAC, IMEI)
+   3. Kontext-Bundle aus Cache (TTL 24 h) oder neu bauen (functions/bundle.js):
+        · iFixit-Guide-Details — Schritte, Werkzeuge, Bilder
+        · Internet-Archive-Volltext — nur bei freier Lizenz
+        · Tavily advanced + raw_content — trust-ranked
+   4. Chunks zur Frage ranken (Keyword-Überdeckung, Quellengewicht,
+      Nachbarschritte) → max. 6 Chunks / 9.000 Zeichen
+   5. Prompt bauen (functions/rag.js): JSON-Schema, Zitatpflicht,
+      Sicherheitsregeln, Quellenhierarchie
+   6. env.AI.run("@cf/openai/gpt-oss-20b") → Antwort validieren,
+      Zitate auf [1]…[n] umnummerieren, Bild-URLs serverseitig auflösen
+   7. Antwort + Schritte + Quellen + Geräte-Gegenprobe zurück
+   └─ ohne Chunks: keine generative Antwort (status "not_covered")
+   └─ bei AI-Fehler/Timeout: Meldung, Verlauf bleibt im Client erhalten
 ```
 
 **Bausteine:**
 
 | Baustein | Aufgabe |
 | --- | --- |
-| `functions/sources.js` | iFixit-, Archiv- und Tavily-Abruf; Suchbegriffe, Filter, Textbegrenzung |
-| `functions/rag.js` | Quellen normalisieren/begrenzen, Prompt bauen, Antwort extrahieren |
-| `functions/_worker.js` | `/api/ai`, Timeout, Debug-Modus, Fehlerantworten |
-| `src/lib/api.js` | `requestAiGuide()` für den Client |
-| `src/components/result/AiPanel.jsx` | Optionaler KI-Eintrag in der Quellenliste des Ergebnis-Screens |
+| `functions/sources.js` | Abrufe: iFixit-Suche/-Detail (Schritte + Bilder), Archiv-Metadaten/-Volltext (Lizenzprüfung), Tavily (snippet/raw) |
+| `functions/bundle.js` | Kontext-Bundle: Chunking, Bildindex, Grenzen, Cache (Version 2) |
+| `functions/rag.js` | Chunk-Auswahl, Prompt, JSON-Validierung, Zitat-Umnummerierung, Geräte-Gegenprobe |
+| `functions/redact.js` | Datenminimierung vor dem Modellaufruf |
+| `functions/ai.js` | `/api/ai`: Routing, Rate-Limit, Timeout, Debug-Modus, Fehlerantworten |
+| `functions/http.js` | CORS + JSON-Antworten |
+| `src/lib/api.js` | `askAi()` für den Client |
+| `src/components/result/AiPanel.jsx` | Chat-Dialog: Schritte mit Bildern, Quellen, Abschluss-Gate, Verlauf (localStorage) |
 
-**Modell:** `@cf/openai/gpt-oss-20b` (Apache-2.0), `max_tokens: 800`, `temperature: 0.2`, `reasoning.effort: low`. Das Modell antwortet ausschließlich auf Basis der übergebenen Quellen und soll Lücken ausdrücklich benennen. Der Button „Einschätzung erstellen“ im KI-Eintrag startet die Kette **manuell**; er löst das Retrieval aus, bei vorhandenen Quellen folgt der AI-Aufruf. Das kontrolliert Neurons-Kosten und Latenz.
+**Modell:** `@cf/openai/gpt-oss-20b` (Apache-2.0), `max_tokens: 2200`, `temperature: 0.2`, `reasoning.effort: low`, Timeout 60 s. Das Modell antwortet ausschließlich auf Basis der übergebenen Chunks und benennt Lücken (`status: "not_covered"`). Es gibt **keine URLs und keine Bildadressen** aus, sondern Chunk-Referenzen; die App löst sie serverseitig gegen den Bildindex auf — erfundene Bilder sind damit strukturell ausgeschlossen. Der Dialog startet **manuell** über das Eingabefeld; das kontrolliert Neurons-Kosten und Latenz.
+
+**Grenzen und Betrieb:**
+
+| Größe | Wert |
+| --- | --- |
+| Kontext-Bundle | max. 10 Quellen, 70 Chunks, 90.000 Zeichen; Cache 24 h pro Gerät + OCR-Text |
+| Auswahl pro Frage | max. 6 Chunks / 9.000 Zeichen, höchstens 3 pro Quelle |
+| Verlauf | letzte 6 Beiträge, Frage max. 600 Zeichen; Gespräch max. 10 Nutzer-Turns (Client) |
+| Rate-Limit | 20 Anfragen / 10 min / IP — Cache-API-basiert, pro Colo (dokumentierte Grenze; dauerhaft wären KV/Durable Objects nötig) |
+| Datenminimierung | Seriennummer/MAC/IMEI werden vor dem Modellaufruf redigiert; Gespräch nur im Browser |
 
 **Umsetzungsstufen:**
 
-1. **RAG-Retrieval + Quellenaufbereitung** (ohne LLM) — umgesetzt.
-2. **Workers-AI-Synthese** aus dem Quellenkontext (ohne Tool-Calling) — umgesetzt.
-3. **Tool-Calling/ReAct** (optional, erst nach der Evaluation) — offen.
+1. **Kontext-Bundle** (iFixit-Schritte/Bilder, Archiv-Volltext, Tavily-Rohinhalt, Cache) — umgesetzt.
+2. **Fragebezogenes Retrieval + strukturierte Antwort** — umgesetzt.
+3. **Chat-UI** mit Abschluss-Gate, Grund-Chips, Budget und Geräte-Gegenprobe — umgesetzt; **Streaming offen**.
+4. **Tool-Calling/ReAct und Vision-Bildprüfung** (optional, nach der Evaluation) — offen.
 
-> **Lokale Entwicklung:** `wrangler dev --local` kann das AI-Binding nicht ausführen („not supported“). Für einen echten AI-Aufruf `wrangler dev --remote` bzw. Deployment nutzen. `POST /api/ai?debug=1` oder `GET /api/ai?device=…&debug=1` testet die RAG-Kette ohne AI-Aufruf.
+> **Lokale Entwicklung:** `wrangler dev --local` kann das AI-Binding nicht ausführen („not supported“). Für einen echten AI-Aufruf `wrangler dev --remote` bzw. Deployment nutzen. `GET /api/ai?device=…&debug=1` prüft das Bundle ohne AI-Aufruf, `POST /api/ai?debug=1` zusätzlich Chunk-Auswahl und Prompt. `npm run test:live` startet den Worker und prüft das Bundle gegen die echten Quellen.
 
-**Begründung und verworfene Alternativen:** siehe ADR D6/D7 in `ENTSCHEIDUNGEN.md`.
+**Begründung und verworfene Alternativen:** siehe ADR D9 (sowie D6/D7 für die Grundentscheidung).
 
-> **Dokumentationskette:** Recherche (`Wissenschaftliche-Vertiefung/02-Recherche`) → Vergleich/Entscheidung (`03-Analyse`, ADR D6/D7) → technische Referenz (§3.3) → Thesis 7.5 → Evaluation (`EVALUATION.md` §6).
+> **Dokumentationskette:** Recherche (`Wissenschaftliche-Vertiefung/02-Recherche`) → Vergleich/Entscheidung (`03-Analyse`, ADR D6/D7/D9) → technische Referenz (§3.3) → Thesis 7.5/7.6 → Evaluation (`EVALUATION.md` §6).
 
 ---
 
@@ -496,11 +519,24 @@ Aus der Dokumentation ergeben sich mehrere Qualitätsdimensionen - die **mehrdim
 
 1. **Zeichenerkennungsrate** der OCR-Engine (Qualität der Texterkennung).
 2. **Rate korrekt extrahierter Modellbezeichnungen** (Verwertbarkeit der Ausgabe).
-3. **KI-Assistenz:** Quellenabdeckung, Fakten-Treue, deutsche Sprachqualität, Latenz und Neurons/Anfrage. Messaufbau in `EVALUATION.md`; Ergebnisse stehen noch aus (`[OFFEN]`).
+3. **KI-Assistenz (ADR D9):** Quellenabdeckung, **Groundedness** (jede Aussage durch einen Chunk gedeckt), **Zitatstreue** (Stimmen die zitierten Quellen?), **Bildtreffer** (zeigt das Bild den genannten Schritt?), **Schrittvollständigkeit** (Zerlegen → Reinigen → Zusammenbau), Latenz, Neurons/Anfrage sowie **Abbruchquote im Dialog** („gelöst“ vs. „klemmt noch“). Messaufbau in `EVALUATION.md`; Ergebnisse stehen noch aus (`[OFFEN]`).
 
 **Empfohlener Testdatensatz:** Typenschilder aller sechs Elektroaltgeräte-Kategorien, jeweils unter variierenden Bedingungen (Beleuchtung, Winkel, Distanz, Oberfläche). Der Aufbau sollte **parallel** zur Entwicklung erfolgen: Jedes ohnehin gescannte Typenschild wird fotografiert und mit dem tatsächlichen Modell annotiert.
 
 **Weitere zu erhebende Größen:** Trefferquote der Anleitungssuche; Nutzerbefragung zum FDR-Potenzial.
+
+### 10.1 Automatisierte Tests (Ist-Stand)
+
+Die Testpyramide ist vollständig aufgesetzt und läuft ohne API-Schlüssel (alle externen Dienste werden ersetzt):
+
+| Ebene | Werkzeug | Umfang | Befehl |
+| --- | --- | --- | --- |
+| Unit | `node:test` | Chunking, Tokenisierung, Redaktion, JSON-Validierung, Zitat-Umnummerierung, Geräte-Gegenprobe | `npm run test:unit` |
+| Worker-Integration | `node:test` + gestubbte Upstreams | `/api/ai` inkl. Bundle-Bau, Prompt, Antwort, Debug, Lizenzsperre, Gerätehinweis | `npm run test:worker` |
+| Browser-E2E | Playwright (Chromium) | **jedes anklickbare Element** aller Screens: Startseite, Scanner (inkl. Fake-Kamera und OCR-Sheet), Ergebnis (alle Menüs, Disclosures, Community/Archiv/Websuche in Erfolgs-, Leer- und Fehlerpfad), Repairguides, Guide-Detail, Inspirations-Detail, kompletter Assistenten-Dialog | `npm run test:e2e` |
+| Live-Smoke | Worker unter `wrangler dev --local` | Health-Check + echtes Kontext-Bundle gegen iFixit und Internet Archive | `npm run test:live` |
+
+`npm test` führt Unit-, Worker- und E2E-Ebene aus (45 Browser-Tests, Stand 29.10.2026). Die Messgrößen dieser Kapitel werden dadurch **nicht** ersetzt — sie prüfen Funktion, nicht Qualität.
 
 > Dieses Kapitel ist im ursprünglichen Entwurf als **Lücke** markiert - es liegt noch keine durchgeführte Evaluation vor.
 
@@ -514,12 +550,12 @@ Aus der Dokumentation ergeben sich mehrere Qualitätsdimensionen - die **mehrdim
 - **YouTube- und Google-Suchanbindung** beginnen (weitere Antwortquellen).
 - **Recyclinghöfe in der Nähe** anzeigen.
 - **Verifikation** von `/api/archive` und `/api/websearch` mit echtem Netzwerkzugriff.
-- **KI-Assistenz testen:** echten Workers-AI-Aufruf im Deployment prüfen (`AI`-Binding, Tavily-Key); deutsche Qualität und Quellenabdeckung nach `EVALUATION.md` §6 messen.
+- **KI-Assistenz testen:** Reparaturassistent im Deployment prüfen (`AI`-Binding, Tavily-Key); deutsche Qualität, Groundedness, Bildtreffer und Quellenabdeckung nach `EVALUATION.md` §6 messen.
 
 ### 11.2 Konzeptphase / teilweise umgesetzt
 
 - **Kategorien-Funktion:** Verworfen wurde „Kategorie als Suchfilter“ (widerspricht der Start-Screen-Reihenfolge). Diskutiert: (1) DIY-Projekte pro Kategorie, (3) gescannte Geräte nach Kategorie filtern, oder eine Kombination mit **anonym geteilter Scan-Historie aller Nutzer**. Letzteres ist technisch überschaubar (Cloudflare KV/D1, kein Konto nötig), wirft aber ein **DSGVO-Thema** auf (Hinweis-Screen beim ersten Scan nötig). Nutzerkonten mit selbst geschriebenen Projekten gelten als großer, eigenständiger Aufwandsblock → zurückstellen.
-- **KI-Assistenz (ADR D6/D7):** Stufe 1 (RAG-Retrieval + Quellenaufbereitung) und Stufe 2 (Workers-AI-Synthese über `/api/ai`) sind umgesetzt; KI-Ergebnisse lassen sich lokal speichern. Offen: Stufe 3 Tool-Calling; Evaluation (deutsche Qualität, Quellenabdeckung, Latenz, Neurons/Anfrage); Caching/Streaming.
+- **KI-Assistenz (ADR D9):** Stufen 1–3 sind umgesetzt (Kontext-Bundle, fragebezogenes Retrieval, strukturierte Antwort, Chat-UI mit Schritten und Bildern). Offen: **Streaming** der Antwort, Stufe 4 (Tool-Calling, Vision-Bildprüfung), Evaluation (Groundedness, Bildtreffer, Latenz, Neurons/Anfrage) und ein dauerhaftes Rate-Limit (KV/Durable Objects statt Cache API).
 
 ### 11.3 Platzhalter im Ergebnis-Screen
 
@@ -549,9 +585,13 @@ Die vollständigen Literaturangaben werden zentral in `QUELLEN.md` geführt (sta
 ```
 mendoor/
 ├── functions/
-│   ├── _worker.js          # Backend: /api/ping, /api/vision, /api/archive, /api/websearch, /api/ai
-│   ├── sources.js          # RAG-Retrieval: iFixit, Archiv, Tavily
-│   └── rag.js              # RAG-Kontext, Quellen-Prompt, Antwort-Extraktion
+│   ├── _worker.js          # Backend-Routing: /api/ping, /api/vision, /api/archive, /api/websearch, /api/ai
+│   ├── ai.js               # /api/ai: Rate-Limit, Timeout, Debug, Antwortaufbau (ADR D9)
+│   ├── bundle.js           # Kontext-Bundle: Chunking, Bildindex, Cache (ADR D9)
+│   ├── rag.js              # Chunk-Auswahl, Prompt, Validierung, Geräte-Gegenprobe
+│   ├── sources.js          # Quellen: iFixit (Suche + Detail), Archiv, Tavily
+│   ├── redact.js           # Datenminimierung (S/N, MAC, IMEI)
+│   └── http.js             # CORS + JSON
 ├── src/                    # React-Frontend (Single Source of Truth)
 │   ├── components/
 │   │   ├── ui/             # UI-Kit: Icon, BottomNav, Disclosure, Sheet, StateBox ...
@@ -561,13 +601,16 @@ mendoor/
 │   │   └── guides/         # GuidesScreen, GuideCard, GuideDetailScreen
 │   ├── hooks/              # useCamera, useAsyncData
 │   ├── lib/                # api, capture, classify, format, guides, search (reine Logik/Datenzugriff)
-│   ├── context/            # AppContext (Navigation, Gerät, Toast)
+│   ├── context/            # AppContext (Navigation, Gerät + Typenschild-Text, Toast)
 │   ├── constants/          # statische UI-Inhalte
 │   ├── styles/             # tokens.css, base.css, components.css, screens.css
 │   ├── App.jsx
 │   └── main.jsx
+├── tests/                  # node:test (Unit + Worker-Integration) und Live-Smoke
+├── e2e/                    # Playwright-Specs + Fixtures (alle externen Dienste ersetzt)
 ├── index.html              # Vite-Einstieg
 ├── vite.config.js
+├── playwright.config.js
 ├── package.json
 ├── legacy_mendoor.md       # Archiv des Vor-React-Frontends (ADR A6)
 ├── dist/                   # Build-Ergebnis (generierte, ausgelieferte Assets)
@@ -584,8 +627,8 @@ mendoor/
 | `lib/capture.js` | Zwei-Frame-Capture + Laplace-Varianz |
 | `lib/classify.js` | `isRealText`, Prosa-Filter, strukturbasierte Extraktion |
 | `lib/search.js` | `bestSearchTerm`, Suchkaskade, Schwierigkeits-Mapping |
-| `lib/api.js` | Vision-/Archive-/Websearch-Proxy, iFixit, Link-out-URLs, `requestAiGuide()` |
-| `components/result/AiPanel.jsx` | Optionaler KI-Eintrag: Start, Lade-/Fehlerzustand, Antwort + Quellen |
+| `lib/api.js` | Vision-/Archive-/Websearch-Proxy, iFixit, Link-out-URLs, `askAi()` |
+| `components/result/AiPanel.jsx` | Reparaturassistent: Chat, Schritte mit Bildern, Abschluss-Gate, Verlauf |
 | `hooks/useAsyncData.js` | Lade-Zustand mit Lazy-Loading |
 | `context/AppContext.jsx` | Navigation, aktuelles Gerät, Toasts |
 | `components/ui/*` | wiederverwendbares UI-Kit |

@@ -94,8 +94,12 @@ export function ScannerScreen() {
       showToast('Bitte ein Modell eingeben');
       return;
     }
+    /* Typenschild-Text und Vorschläge mitgeben (ADR D9): Der Assistent
+       nutzt sie als Zusatzkontext, die Rohtext-Anzeige bleibt davon
+       unberührt. */
+    const meta = { rawText: sheet?.raw || '', candidates: sheet?.candidates || [] };
     setSheet(null);
-    openDevice(device);
+    openDevice(device, meta);
     navigate('result');
   };
 

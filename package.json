@@ -8,7 +8,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "test:unit": "node --test tests/unit.test.mjs",
+    "test:worker": "node --test tests/worker.test.mjs",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit && npm run test:worker && npm run test:e2e",
+    "test:live": "npm run build && node tests/live.e2e.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -16,6 +21,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@vitejs/plugin-react": "^6.1.1",
     "vite": "^8.3.2",
     "wrangler": "^4.146.0"

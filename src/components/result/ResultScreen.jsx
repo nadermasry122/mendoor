@@ -94,8 +94,8 @@ export function ResultScreen() {
           <Disclosure
             id="ai"
             icon="sparkle"
-            title="KI-Einschätzung"
-            subtitle="Optional: Quellen zusammenfassen"
+            title="Reparaturassistent"
+            subtitle="Frage stellen – belegte Schritte mit Bildern"
             open={openPanel === 'ai'}
             onToggle={toggle}
             className="disclosure--ai"
