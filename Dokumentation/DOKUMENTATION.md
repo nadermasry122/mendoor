@@ -574,7 +574,7 @@ Die Testpyramide ist vollständig aufgesetzt und läuft ohne API-Schlüssel (all
 
 ## 12. Quellenverzeichnis
 
-Die vollständigen Literaturangaben werden zentral in `QUELLEN.md` geführt (stabile Schlüssel `[Qn]`). Alle `[Qn]`-Verweise in diesem Dokument lösen sich dort auf. Es wird hier bewusst **keine zweite Quellenliste** gepflegt, um Redundanz und Divergenz zu vermeiden.
+Die vollständigen Literaturangaben werden zentral in `QUELLEN.md` geführt (stabile Schlüssel `[Qn]`). Das Register ist zweistufig: **Teil A** enthält die 39 in der Bachelorarbeit zitierten Quellen, **Teil B** die 17 Quellen, die ausschließlich in Arbeitsdokumenten verwendet werden. Alle `[Qn]`-Verweise in diesem Dokument lösen sich dort auf. Die Bachelorarbeit selbst führt eine eigene Nummerierung `[1]…[n]` mit vollständigem Verzeichnis. Es wird hier bewusst **keine zweite Quellenliste** gepflegt, um Redundanz und Divergenz zu vermeiden.
 
 ---
 

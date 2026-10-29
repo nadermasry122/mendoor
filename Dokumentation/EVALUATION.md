@@ -2,7 +2,7 @@
 
 > **Zweck:** Erfassung der Messdaten für Kapitel 8 der Bachelorarbeit (Evaluation). Daten werden **während** der Nutzung/Entwicklung mitgeschrieben — was nicht erfasst wird, ist später nicht rekonstruierbar.
 > **Regeln:** Siehe `REGELN.md` §8.6. Kapitelzuordnung: `BACHELORARBEIT.md` Kap. 8.
-> **Stand:** 26.10.2026
+> **Stand:** 29.10.2026
 
 ---
 

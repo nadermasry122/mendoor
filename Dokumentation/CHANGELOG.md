@@ -102,6 +102,9 @@ Neue kleine Änderungen werden hier oben eingetragen (neueste zuerst). Große Ä
 
 | Datum | Bereich | Änderung |
 |---|---|---|
+| 2026-10-29 | Doku | `QUELLEN.md` zweistufig: Teil A (39, in der Arbeit zitiert) getrennt von Teil B (17, nur Arbeitsdokumente); Themenfelder und `[Qn]`-Schlüssel unverändert |
+| 2026-10-29 | Thesis | Eigenes Quellenverzeichnis `[1]…[39]` eingeführt (Reihenfolge der Erstnennung, ohne Doku-Abhängigkeit), interne Datei-/ADR-/Sitzungsverweise entfernt, Icon-Quelle auf Phosphor korrigiert (Q31), Cloud-Vision-Freikontingent belegt (Q4) |
+| 2026-10-29 | Thesis | 7.6 gestrafft + 2 Abbildungen, 7.5 verdichtet, 3.5 Testpyramide, 5.1/6 Architektur- und Pipeline-Diagramm, FA-11…13/NFA-10/11, Kapitel 8/9.2/9.3 angeglichen, TOC und Quellen verlinkt, Q55/Q56 ergänzt |
 | 2026-10-29 | Tests | E2E-Suite mit Playwright (45 Tests, jedes anklickbare Element inkl. Fake-Kamera/OCR-Sheet), `node:test` für Unit + Worker-Endpunkt, Live-Smoke für Bundle gegen echte Quellen; `npm test` |
 | 2026-10-29 | KI | D9 Stufe 3: `AiPanel` als Dialog (Vorschläge, Schritte mit Bildern, Abschluss-Gate, Grund-Chips, 10-Turn-Budget, Verlauf in `localStorage`) |
 | 2026-10-29 | KI | D9 Stufe 2: `/api/ai` als Frage-Endpunkt, JSON-Validierung, Zitat-Umnummerierung, serverseitige Bildauflösung, Geräte-Gegenprobe, Rate-Limit, Redaktion von S/N/MAC/IMEI |

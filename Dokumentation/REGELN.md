@@ -10,7 +10,7 @@
 | Datei | Beantwortet | Charakter | Darf NICHT enthalten |
 |---|---|---|---|
 | `BACHELORARBEIT.md` | *Wissenschaftlicher Fließtext* der Arbeit | Fließtext, Quellen als `[Qn]` | rohe Debug-Logs, Session-Notizen |
-| `QUELLEN.md` | *Welche* Quellen gibt es | Register, stabile Schlüssel `[Qn]` | Diskussion, Bewertung |
+| `QUELLEN.md` | *Welche* Quellen gibt es | zweistufiges Register (A: in der Arbeit zitiert · B: nur Arbeitsdokumente), stabile Schlüssel `[Qn]` | Diskussion, Bewertung |
 | `ENTSCHEIDUNGEN.md` | *Warum* wurde etwas so entschieden | thematisch, ADR-Stil | Code-Dumps |
 | `PROTOKOLLE.md` | *Was* geschah in welcher Sitzung | chronologisch | Wiederholung getroffener Entscheidungen |
 | `EVALUATION.md` | *Messdaten* für Kapitel 8 | Tabellen, Kennzahlen | Begründungen |
@@ -84,8 +84,8 @@ Die **Erkenntnis** wird verallgemeinert formuliert (nicht „Bug X behoben", son
 - **Designfragen** folgen der festen Hierarchie (siehe `ENTSCHEIDUNGEN.md`, Abschnitt „Methodik"):
   1. Apple HIG · 2. Google *Mobile App UX Principles* · 3. Google *Interactive Canvas Design* · (Basis:) Google *Actions SDK*.
 - **Technikfragen** werden mit Primärquellen (offizielle Dokumentation) und, wo vorhanden, mit wissenschaftlichen Papern belegt.
-- **Ein Master-Register:** Alle Quellen werden in `QUELLEN.md` mit **stabilen Schlüsseln `[Qn]`** geführt (einzige Quelle der Wahrheit). In Thesis wie in Arbeitsdokumenten wird nur der Schlüssel referenziert — keine zweite Nummerierung.
-- **Endgültige Nummerierung der Arbeit** (`[1]…[n]`) wird bei der Abgabe mechanisch aus `QUELLEN.md` erzeugt (Regel dort). Bis dahin wird **nicht** umnummeriert.
+- **Ein Master-Register:** Alle Quellen werden in `QUELLEN.md` mit **stabilen Schlüsseln `[Qn]`** geführt (einzige Quelle der Wahrheit). Es ist zweistufig: **Teil A** = in der Arbeit zitiert, **Teil B** = nur in Arbeitsdokumenten. Arbeitsdokumente referenzieren ausschließlich den Schlüssel.
+- **Nummerierung der Arbeit:** Die Thesis führt seit 29.10.2026 ein **eigenes, fortlaufendes Verzeichnis** `[1]…[n]` (Reihenfolge der ersten Fundstelle) und ist ohne den Doku-Ordner lesbar. Die stabilen `[Qn]`-Schlüssel gelten nur noch in den Arbeitsdokumenten; bei Änderungen an den Zitaten wird die Thesis-Nummerierung mechanisch neu erzeugt.
 - Bei Web-Quellen wird das **Abrufdatum** im Register vermerkt.
 
 ---
@@ -129,3 +129,5 @@ Die **Erkenntnis** wird verallgemeinert formuliert (nicht „Bug X behoben", son
 | 2026-09-29 | Erstfassung: Dateirollen, Dokumentationswürdigkeit, ADR-Schema, Fehler-/Quellenregeln, Workflow, Trennung von Arbeitsdokument und Thesis-Text. |
 | 2026-09-29 | Quellen auf Master-Register `QUELLEN.md` mit stabilen `[Qn]`-Schlüsseln umgestellt; `EVALUATION.md` als Pflicht-Erfassung aufgenommen. |
 | 2026-09-29 | Sicherheitsabschnitt ergänzt (keine Geheimnisse in Dateien; Rotationspflicht bei Offenlegung). |
+| 2026-10-29 | Thesis-Nummerierung `[1]…[n]` mit eigenem Quellenverzeichnis eingeführt; `[Qn]` nur noch in Arbeitsdokumenten. |
+| 2026-10-29 | Quellenregister zweistufig: Teil A (39, in der Arbeit zitiert) und Teil B (17, nur Arbeitsdokumente). |

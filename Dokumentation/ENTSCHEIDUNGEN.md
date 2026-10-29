@@ -494,8 +494,8 @@
   - **Quellenlage:** Für Symptome wie Korrosion existieren häufig **keine** gerätespezifischen Anleitungen. Die ehrliche Lücke bleibt Teil der Antwort — das ist kein Fehler des Assistenten, sondern eine Eigenschaft der Datenlage.
   - **Evaluation:** Neue Messgrößen nötig: Groundedness, Zitat- und Bildtreffer, Schrittvollständigkeit, Latenz, Neurons/Anfrage, Abbruchquote im Dialog (siehe `EVALUATION.md`).
   - **D6:** Die dortige „Stufe 3 (Tool-Calling)“ wird zur **Stufe 4**; die Stufen 1+2 bleiben gültig.
-  - **Dokumentation:** Thesis-Kapitel 7.6 ist zu schreiben; `DOKUMENTATION.md` §3.3 und §11.2 sind nach der Umsetzung anzugleichen (Ist-Stand).
-- **Quellen:** offen — für Kapitel 7.6 sind Belege zu ergänzen (u. a. Groundedness/RAG, Workers-AI-Grenzen, iFixit-Lizenz, PDF-Extraktion). Eintrag in `QUELLEN.md` folgt mit der Thesis-Formulierung.
+  - **Dokumentation:** Thesis-Kapitel 7.6 ist verfasst (2026-10-29); `DOKUMENTATION.md` §3.3 und §11.2 sind nach der Umsetzung anzugleichen (Ist-Stand).
+- **Quellen:** [Q10], [Q19], [Q20], [Q32]–[Q38], [Q46]–[Q48], [Q51], [Q55], [Q56]. Offen bleiben Belege für strukturierte Ausgabe (JSON-Schema), Keyword-Retrieval/BM25 und Prompt-Injection — in 7.6 bewusst ohne Scheinbeleg formuliert.
 
 ---
 
